@@ -431,3 +431,17 @@ export function applyZonePalette(s = zoneSettings) {
   zonePaletteColors(s).forEach((c, i) => root.style.setProperty(`--z${i}`, c));
 }
 window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyZonePalette());
+
+/**
+ * OpenStreetMap tile layer. OSM's tile usage policy requires a Referer; the
+ * Caddy site sends `Referrer-Policy: no-referrer` for the whole origin, so
+ * the tile <img>s override it with `origin` (OSM sees only the host, never
+ * a path). Single host: the a/b/c subdomains are deprecated.
+ */
+export function osmLayer() {
+  return L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    referrerPolicy: 'origin',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  });
+}

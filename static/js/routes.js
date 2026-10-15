@@ -2,6 +2,7 @@
 import {
   api, postJson, objects, h, dataTable, fmtDur, fmtKm, fmtNum, fmtDate, fmtPace, fmtSpeedFor, speedUnit,
   usesPace, TYPE_LABEL, FAMILIES, remember, echart, chartTheme, baseAxis, baseTooltip, series, css,
+  osmLayer,
 } from './util.js';
 
 const state = remember('routes', { family: 'running', minRuns: 3 });
@@ -167,7 +168,7 @@ export async function routePage(app, id) {
     const track = lat.map((la, i) => [la, lon[i]]).filter((p) => p[0] != null && p[1] != null && p[0] !== 0);
     if (track.length) {
       const map = L.map(mapEl);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+      osmLayer().addTo(map);
       const line = L.polyline(track, { color: css('--s1'), weight: 3 }).addTo(map);
       map.fitBounds(line.getBounds(), { padding: [12, 12] });
       L.circleMarker(track[0], { radius: 5, color: css('--good'), fillOpacity: 1 }).addTo(map).bindTooltip('Start');

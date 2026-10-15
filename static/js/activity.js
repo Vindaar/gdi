@@ -4,6 +4,7 @@ import {
   api, h, tile, fmtDur, fmtKm, fmtNum, fmtPace, fmtKmh, fmtDate, fmtSpeedFor, speedUnit,
   usesPace, TYPE_LABEL, css, series, zoneBlock, settingsZones, dataTable, objects,
   fmtDistanceLabel, segmented, remember, zoneOf,
+  osmLayer,
 } from './util.js';
 import { runModelCard } from './runmodel.js';
 
@@ -342,9 +343,7 @@ export async function activityPage(app, id) {
 
   if (hasGps) {
     map = L.map(mapEl, { scrollWheelZoom: true });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(map);
+    osmLayer().addTo(map);
     line = L.polyline(pts.map((p) => [p[0], p[1]]), { color: css('--s1'), weight: 3 }).addTo(map);
     map.fitBounds(line.getBounds(), { padding: [16, 16] });
     L.circleMarker(pts[0], { radius: 5, color: css('--good'), fillOpacity: 1 }).addTo(map).bindTooltip('Start');
