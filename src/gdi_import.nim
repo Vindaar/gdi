@@ -782,7 +782,10 @@ proc scanDir(db: DbConn, dir, kind: string, stats: var ImportStats,
   else:
     for f in walkFiles(dir / "*.json"): paths.add f
   for path in paths:
-    let p = absolutePath(path)
+    # canonical path (symlinks resolved): the same file must have the same
+    # key however its directory was specified, or a scan with another spelling
+    # would treat every known file as removed
+    let p = try: expandFilename(path) except OSError: absolutePath(path)
     seen.incl p
     let sig = try: fileSig(p) except OSError: continue
     if known.getOrDefault(p, (-1'i64, -1'i64)) == sig:
@@ -810,8 +813,15 @@ proc scanDir(db: DbConn, dir, kind: string, stats: var ImportStats,
       db.exec(sql"COMMIT")
       log &"{kind}: {stats.imported} imported…"
       db.exec(sql"BEGIN")
-  # files that disappeared
+  # files that disappeared. A stale entry whose file name is still present
+  # under another path (same activity id / date) only loses its record —
+  # the data was just (re)imported from the current path.
+  var seenNames = initHashSet[string]()
+  for p in seen: seenNames.incl p.extractFilename
   for p in known.keys:
+    if p notin seen and p.extractFilename in seenNames:
+      db.exec(sql"DELETE FROM files WHERE path = ?", p)
+      continue
     if p notin seen:
       if kind == "activity":
         let id = try: parseInt(p.extractFilename.changeFileExt("")) except ValueError: -1
