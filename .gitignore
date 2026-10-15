@@ -1,0 +1,9 @@
+gdi
+data/
+*.tmp
+
+# symlinks to private data / sibling repo (see README)
+exercise-history.org
+exercise-history.raw
+garmin-health
+garminApi

@@ -1,0 +1,60 @@
+import { api, h, applyZonePalette } from './util.js';
+import { activitiesPage } from './activities.js';
+import { activityPage } from './activity.js';
+import { effortsPage } from './efforts.js';
+import { analysisPage } from './analysis.js';
+import { dashboardPage } from './dashboard.js';
+import { healthPage } from './health.js';
+import { settingsPage } from './settings.js';
+import { routesPage, routePage } from './routes.js';
+import { comparePage } from './compare.js';
+
+const routes = [
+  [/^#?\/?$/, () => dashboardPage, 'dashboard'],
+  [/^#\/activities$/, () => activitiesPage, 'activities'],
+  [/^#\/activity\/(\d+)$/, () => activityPage, 'activities'],
+  [/^#\/efforts$/, () => effortsPage, 'efforts'],
+  [/^#\/routes$/, () => routesPage, 'routes'],
+  [/^#\/route\/(\d+)$/, () => routePage, 'routes'],
+  [/^#\/compare$/, () => comparePage, 'activities'],
+  [/^#\/analysis$/, () => analysisPage, 'analysis'],
+  [/^#\/dashboard$/, () => dashboardPage, 'dashboard'],
+  [/^#\/health$/, () => healthPage, 'health'],
+  [/^#\/settings$/, () => settingsPage, 'settings'],
+];
+
+let cleanup = null;
+
+async function route() {
+  const hash = location.hash.split('?')[0];
+  const app = document.getElementById('app');
+  for (const [re, page, nav] of routes) {
+    const m = hash.match(re);
+    if (!m) continue;
+    document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === nav));
+    if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
+    app.replaceChildren(h('div', { class: 'empty' }, 'Loading…'));
+    try {
+      cleanup = await page()(app, ...m.slice(1));
+    } catch (e) {
+      console.error(e);
+      app.replaceChildren(h('div', { class: 'empty' }, 'Error: ' + e.message));
+    }
+    window.scrollTo(0, 0);
+    return;
+  }
+  app.replaceChildren(h('div', { class: 'empty' }, 'Not found'));
+}
+
+async function status() {
+  try {
+    const s = await api('status', { fresh: true });
+    document.getElementById('status').textContent =
+      `${s.activities} activities · ${s.withStreams} with streams · ${s.healthDays} health days`;
+  } catch {}
+}
+
+window.addEventListener('hashchange', route);
+api('settings').then(applyZonePalette).catch(() => applyZonePalette({})).finally(route);
+status();
+setInterval(status, 60000);

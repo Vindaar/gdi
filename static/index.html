@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Training Log</title>
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="vendor/uPlot.min.css">
+<link rel="stylesheet" href="css/app.css">
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/uPlot.iife.min.js"></script>
+<script src="vendor/echarts.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#/">Training Log</a>
+  <nav>
+    <a href="#/activities" data-nav="activities">Activities</a>
+    <a href="#/dashboard" data-nav="dashboard">Performance</a>
+    <a href="#/efforts" data-nav="efforts">Best efforts</a>
+    <a href="#/routes" data-nav="routes">Routes</a>
+    <a href="#/analysis" data-nav="analysis">Analysis</a>
+    <a href="#/health" data-nav="health">Health</a>
+    <a href="#/settings" data-nav="settings">Settings</a>
+  </nav>
+  <span class="status" id="status"></span>
+</header>
+<main id="app"></main>
+<div id="tooltip" class="tooltip" hidden></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
