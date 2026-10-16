@@ -89,7 +89,7 @@ const ActivityListCols = """id, name, type_key, parent_type, location, start_loc
   avg_speed, avg_moving_speed, avg_gap_speed, gap_source, max_speed, avg_hr, max_hr,
   avg_cadence, avg_power, norm_power, calories, aerobic_te, anaerobic_te,
   training_load, te_label, avg_temp, w_temp, w_apparent_temp, w_humidity,
-  w_wind_speed, w_type, gear, n_samples, has_gps, decoupling, decoupling_steady, pace_cv, dq_flags"""
+  w_wind_speed, w_type, gear, n_samples, has_gps, decoupling, decoupling_steady, pace_cv, dq_flags, rpe, feel"""
 
 proc familyFilter(family: string, alias = "a"): (string, seq[string]) =
   if family.len == 0 or family == "all": ("1=1", @[])

@@ -1,7 +1,7 @@
 // Activity list: filter row + sortable table over all activities.
 import {
   api, objects, h, dataTable, fmtDur, fmtKm, fmtNum, fmtDate, fmtSpeedFor, speedUnit,
-  FAMILIES, TYPE_LABEL, remember, dqBadge,
+  FAMILIES, TYPE_LABEL, remember, dqBadge, FEEL_LABEL,
 } from './util.js';
 
 const state = remember('activities', {
@@ -76,6 +76,7 @@ export async function activitiesPage(app) {
     { key: 'avg_power', label: 'Power', fmt: (v) => fmtNum(v) },
     { key: 'training_load', label: 'Load', fmt: (v) => fmtNum(v) },
     { key: 'aerobic_te', label: 'TE', fmt: (v) => fmtNum(v, 1) },
+    { key: 'rpe', label: 'RPE', fmt: (v) => fmtNum(v), title: (r) => (r.feel != null ? `felt ${FEEL_LABEL(r.feel)}` : null) },
     { key: 'w_temp', label: '°C', fmt: (v) => fmtNum(v) },
     { key: 'calories', label: 'kcal', fmt: (v) => fmtNum(v) },
     { key: 'location', label: 'Location', left: true },

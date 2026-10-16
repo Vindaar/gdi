@@ -9,7 +9,7 @@ import std / [os, json, math, strutils, strformat, times, tables, algorithm, set
 import gdi_db, gdi_models, gdi_metrics
 
 const
-  ImporterVersion* = "14"
+  ImporterVersion* = "15"
     ## Bump whenever derived data changes; forces a full re-import.
   BestEffortDistances* = [400.0, 1000.0, 1609.344, 3000.0, 5000.0, 10000.0,
                           15000.0, 20000.0, 21097.5, 30000.0, 40000.0, 42195.0,
@@ -777,6 +777,8 @@ proc importActivity*(db: DbConn, j: JsonNode) =
     ("decoupling_steady", (if decPct.isNaN: newJNull() else: %int(decSteady))),
     ("pace_cv", jf decCv),
     ("dq_flags", (if dq.len == 0: newJNull() else: %($dq))),
+    ("rpe", jf(s.num("directWorkoutRpe") / 10)),       # Garmin stores RPE × 10
+    ("feel", jf s.num("directWorkoutFeel")),
     ("avg_hr", jf s.num("averageHR")),
     ("max_hr", jf s.num("maxHR")),
     ("min_hr", jf s.num("minHR")),

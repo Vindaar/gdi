@@ -472,3 +472,6 @@ export function dqBadge(flags) {
   const issues = dqIssues(flags);
   return issues.length ? h('span', { class: 'dq-badge', title: issues.join('\n'), 'aria-label': 'data quality issues' }, '⚠') : null;
 }
+
+// Garmin's post-activity prompt: perceived effort 1–10 and "how did you feel" 0–100
+export const FEEL_LABEL = (v) => (v == null ? null : ['very weak', 'weak', 'normal', 'strong', 'very strong'][Math.round(v / 25)] ?? null);

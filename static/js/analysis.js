@@ -36,6 +36,8 @@ const METRICS = {
     power:  { label: 'Power (W)', get: (r) => r.avg_power, unit: 'W' },
     load:   { label: 'Training load', get: (r) => r.training_load, unit: 'load' },
     te:     { label: 'Aerobic TE', get: (r) => r.aerobic_te, unit: 'te' },
+    rpe:    { label: 'Perceived effort (RPE 1–10)', get: (r) => r.rpe, unit: 'rpe', int: true },
+    feel:   { label: 'Feel (0 very weak … 100 very strong)', get: (r) => r.feel, unit: 'feel', int: true },
     temp:   { label: 'Temperature (°C)', get: (r) => r.w_temp, unit: '°C' },
     hum:    { label: 'Humidity (%)', get: (r) => r.w_humidity, unit: '%' },
     expd:   { label: 'Vs expected pace (s/km, − = faster)', get: (r) => r.exp_delta, unit: 's/km' },

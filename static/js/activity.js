@@ -5,7 +5,7 @@ import {
   usesPace, TYPE_LABEL, css, series, zoneBlock, settingsZones, dataTable, objects,
   fmtDistanceLabel, segmented, remember, zoneOf,
   osmLayer,
-  dqIssues,
+  dqIssues, FEEL_LABEL,
 } from './util.js';
 import { runModelCard } from './runmodel.js';
 
@@ -90,6 +90,7 @@ export async function activityPage(app, id) {
       h('div', { class: 'k' }, 'Aerobic decoupling'),
       h('div', { class: 'v' }, `${a.decoupling > 0 ? '+' : ''}${fmtNum(a.decoupling, 1)}`, h('span', { class: 'u' }, '%')),
       h('div', { class: 'muted', style: 'font-size:11px' }, a.decoupling_steady ? 'steady run' : `not steady (±${fmtNum(a.pace_cv * 100)} % pace) — hard to interpret`)) : null,
+    a.rpe != null || a.feel != null ? tile('Perceived effort', a.rpe != null ? `${fmtNum(a.rpe)} / 10` : '–', FEEL_LABEL(a.feel) ? `felt ${FEEL_LABEL(a.feel)}` : '') : null,
     a.calories ? tile('Calories', fmtNum(a.calories), 'kcal') : null,
     a.w_temp != null ? tile('Weather', `${fmtNum(a.w_temp)}°C`, [a.w_type, a.w_humidity != null ? `${fmtNum(a.w_humidity)}%` : null,
       a.w_wind_speed != null ? `wind ${fmtNum(a.w_wind_speed * 3.6)} km/h ${a.w_wind_dir || ''}` : null].filter(Boolean).join(' · ')) : null);
