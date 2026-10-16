@@ -1,19 +1,19 @@
 // Activity list: filter row + sortable table over all activities.
 import {
   api, objects, h, dataTable, fmtDur, fmtKm, fmtNum, fmtDate, fmtSpeedFor, speedUnit,
-  FAMILIES, TYPE_LABEL, remember, dqBadge, FEEL_LABEL,
+  FAMILIES, TYPE_LABEL, remember, dqBadge, FEEL_LABEL, parseTags, tagChips,
 } from './util.js';
 
 const state = remember('activities', {
   family: 'all', type: '', q: '', from: '', to: '', minKm: '', maxKm: '',
-  maxAscent: '', hideFlagged: false, sortKey: 'start_local', sortDesc: true,
+  maxAscent: '', hideFlagged: false, tag: '', sortKey: 'start_local', sortDesc: true,
 });
 
 export async function activitiesPage(app) {
   // URL filters (links from other pages): #/activities?family=running&from=…&to=…
   const urlParams = new URLSearchParams(location.hash.split('?')[1] || '');
   if ([...urlParams.keys()].length) {
-    state.set({ family: 'all', type: '', q: '', from: '', to: '', minKm: '', maxKm: '', maxAscent: '',
+    state.set({ family: 'all', type: '', q: '', from: '', to: '', minKm: '', maxKm: '', maxAscent: '', tag: '',
                 ...Object.fromEntries(urlParams) });
   }
   const all = objects(await api('activities'));
@@ -24,7 +24,14 @@ export async function activitiesPage(app) {
     FAMILIES.map((f) => h('option', { value: f, selected: s.family === f }, f)));
   const typeSel = h('select', {}, h('option', { value: '' }, 'Any type'),
     types.map((t) => h('option', { value: t, selected: s.type === t }, TYPE_LABEL(t))));
-  const q = h('input', { type: 'search', placeholder: 'name, location, gear…', value: s.q });
+  const q = h('input', { type: 'search', placeholder: 'name, location, gear, note…', value: s.q });
+  for (const a of all) a.tagList = parseTags(a.tags);
+  const tagCounts = new Map();
+  for (const a of all) for (const t of a.tagList) tagCounts.set(t, (tagCounts.get(t) || 0) + 1);
+  const tagSel = h('select', {}, h('option', { value: '' }, 'any'), h('option', { value: '!', selected: s.tag === '!' }, 'with any tag / note'),
+    [...tagCounts.entries()].sort((x, y) => y[1] - x[1]).flatMap(([t, n]) => [
+      h('option', { value: t, selected: s.tag === t }, `${t} (${n})`),
+      h('option', { value: `-${t}`, selected: s.tag === `-${t}` }, `without ${t}`)]));
   const from = h('input', { type: 'date', value: s.from });
   const to = h('input', { type: 'date', value: s.to });
   const minKm = h('input', { type: 'number', step: '0.5', min: 0, value: s.minKm, placeholder: 'min' });
@@ -37,6 +44,7 @@ export async function activitiesPage(app) {
     h('label', {}, 'From', from), h('label', {}, 'To', to),
     h('label', {}, 'Distance km', h('span', {}, minKm, ' – ', maxKm)),
     h('label', {}, 'Max ascent / km', maxAscent),
+    h('label', {}, 'Tag', tagSel),
     h('label', { title: 'GPS jumps, impossible speeds, HR artefacts … (hover ⚠ for details)' }, 'Data quality',
       h('span', { class: 'check' }, hideFlagged, 'hide flagged')));
 
@@ -60,6 +68,8 @@ export async function activitiesPage(app) {
     { key: 'start_local', label: 'Date', left: true, fmt: (v) => fmtDate(v, true), link: (r) => `#/activity/${r.id}` },
     { key: 'name', label: 'Name', left: true, cls: 'name', link: (r) => `#/activity/${r.id}`, title: (r) => r.name, after: (r) => dqBadge(r.dq_flags) },
     { key: 'type_key', label: 'Type', left: true, fmt: (v) => TYPE_LABEL(v) },
+    { key: 'tags', label: 'Tags', left: true, sortVal: (r) => r.tagList.join(' ') || null,
+      fmt: (v, r) => h('span', {}, ...tagChips(r.tagList), r.note ? h('span', { class: 'muted', title: r.note }, ' ✎') : null) },
     { key: 'distance', label: 'km', fmt: (v) => (v ? fmtKm(v) : '–') },
     { key: 'moving_duration', label: 'Moving', fmt: fmtDur },
     { key: 'avg_moving_speed', label: 'Pace/Speed', fmt: (v, r) => (r.distance ? `${fmtSpeedFor(fam(r), v)} ${speedUnit(fam(r))}` : '–'),
@@ -91,13 +101,14 @@ export async function activitiesPage(app) {
     const f = {
       family: famSel.value, type: typeSel.value, q: q.value.trim().toLowerCase(),
       from: from.value, to: to.value, minKm: minKm.value, maxKm: maxKm.value, maxAscent: maxAscent.value,
-      hideFlagged: hideFlagged.checked,
+      hideFlagged: hideFlagged.checked, tag: tagSel.value,
     };
     state.set(f);
     const rows = all.filter((a) =>
       (f.family === 'all' || a.parent_type === f.family) &&
       (!f.type || a.type_key === f.type) &&
-      (!f.q || [a.name, a.location, a.gear, a.type_key].some((x) => (x || '').toLowerCase().includes(f.q))) &&
+      (!f.q || [a.name, a.location, a.gear, a.type_key, a.note, a.tagList.join(' ')].some((x) => (x || '').toLowerCase().includes(f.q))) &&
+      (!f.tag || (f.tag === '!' ? (a.tagList.length || a.note) : f.tag.startsWith('-') ? !a.tagList.includes(f.tag.slice(1)) : a.tagList.includes(f.tag))) &&
       (!f.from || a.start_local >= f.from) &&
       (!f.to || a.start_local.slice(0, 10) <= f.to) &&
       (f.minKm === '' || (a.distance || 0) >= f.minKm * 1000) &&
@@ -115,7 +126,7 @@ export async function activitiesPage(app) {
   }
   const tileOf = (k, v, u) => h('div', { class: 'tile' }, h('div', { class: 'k' }, k), h('div', { class: 'v' }, v, u ? h('span', { class: 'u' }, u) : null));
 
-  for (const el of [famSel, typeSel, from, to, hideFlagged]) el.addEventListener('change', apply);
+  for (const el of [famSel, typeSel, from, to, hideFlagged, tagSel]) el.addEventListener('change', apply);
   for (const el of [q, minKm, maxKm, maxAscent]) el.addEventListener('input', apply);
   apply();
 

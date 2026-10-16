@@ -5,6 +5,7 @@
 import {
   api, postJson, objects, dataTable, fmtKm, h, fmtDur, fmtDate, TYPE_LABEL, FAMILIES, remember, echart,
   chartTheme, baseAxis, baseTooltip, series, segmented, seqRamp,
+  parseTags,
 } from './util.js';
 
 // `unit` decides whether two metrics can share one Y axis.
@@ -59,7 +60,7 @@ METRICS.samples = {
 const state = remember('analysis', {
   level: 'segments', family: 'running', type: '', x: 'hr', y: 'pace', y2: '', color: '', group: 'year',
   from: '', to: '', gradeMin: '', gradeMax: '', apkMax: '', tempMin: '', tempMax: '',
-  hrMin: '', hrMax: '', minKm: '', trend: true,
+  hrMin: '', hrMax: '', minKm: '', tag: '', trend: true,
   mode: 'scatter', weight: 'count', bins: 40, norm: false,
 });
 
@@ -118,15 +119,18 @@ export async function analysisPage(app) {
   const filters = h('div', { class: 'filters' });
   const info = h('div', { class: 'muted', style: 'margin-top:8px' });
   let data = [];
+  let tagsOf = new Map();   // activity id → tags (notes file)
 
   async function load() {
     const s = state.get();
     info.textContent = 'Loading…';
     if (s.level === 'samples' && s.mode !== 'hist') state.set({ level: 'segments' });
+    const acts = objects(await api('activities'));
+    tagsOf = new Map(acts.map((r) => [r.id, parseTags(r.tags)]));
     if (state.get().level === 'segments') {
       data = objects(await api(`segments?family=${s.family}`));
     } else {
-      data = objects(await api('activities')).filter((r) => s.family === 'all' || r.parent_type === s.family);
+      data = acts.filter((r) => s.family === 'all' || r.parent_type === s.family);
     }
     buildControls();
     draw();
@@ -216,6 +220,13 @@ export async function analysisPage(app) {
       h('label', {}, 'Temp °C', h('span', {}, inp('tempMin', 'min'), ' – ', inp('tempMax', 'max'))),
       h('label', {}, st.level === 'segments' ? 'HR' : 'Activity avg HR', h('span', {}, inp('hrMin', 'min'), ' – ', inp('hrMax', 'max'))),
       h('label', {}, 'Activity ≥ km', inp('minKm', 'km', '0.5')),
+      (() => {
+        const ct = new Map();
+        for (const ts of tagsOf.values()) for (const t of ts) ct.set(t, (ct.get(t) || 0) + 1);
+        if (!ct.size) return null;
+        const opts = [['', 'any'], ...[...ct.entries()].sort((a, b) => b[1] - a[1]).flatMap(([t]) => [[t, t], [`-${t}`, `without ${t}`]])];
+        return h('label', {}, 'Tag', sel('tag', opts, st.tag, draw));
+      })(),
     ].filter(Boolean));
   }
 
@@ -234,7 +245,9 @@ export async function analysisPage(app) {
       (num(s.tempMax) == null || (r.w_temp != null && r.w_temp <= num(s.tempMax))) &&
       (num(s.hrMin) == null || (r.avg_hr != null && r.avg_hr >= num(s.hrMin))) &&
       (num(s.hrMax) == null || (r.avg_hr != null && r.avg_hr <= num(s.hrMax))) &&
-      (num(s.minKm) == null || (totalDist(r) || 0) >= num(s.minKm) * 1000));
+      (num(s.minKm) == null || (totalDist(r) || 0) >= num(s.minKm) * 1000) &&
+      (!s.tag || (() => { const ts = tagsOf.get(seg ? r.activity_id : r.id) || [];
+        return s.tag.startsWith('-') ? !ts.includes(s.tag.slice(1)) : ts.includes(s.tag); })()));
   }
 
   function draw() {

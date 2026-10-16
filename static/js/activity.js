@@ -5,7 +5,7 @@ import {
   usesPace, TYPE_LABEL, css, series, zoneBlock, settingsZones, dataTable, objects,
   fmtDistanceLabel, segmented, remember, zoneOf,
   osmLayer,
-  dqIssues, FEEL_LABEL,
+  dqIssues, FEEL_LABEL, parseTags, tagChips, TAG_SUGGESTIONS, postJson,
 } from './util.js';
 import { runModelCard } from './runmodel.js';
 
@@ -350,11 +350,76 @@ export async function activityPage(app, id) {
     h('span', { class: 'muted' }, 'Drag on a chart to select a section: charts zoom, the map highlights it and its statistics appear above (double-click resets).'));
 
   const modelCard = await runModelCard(a, d.model, d.modelNoise);
+  // ── notes & tags (Org file; Garmin's own description read-only) ──
+  const notesCard = h('div', { class: 'card notes-card', style: 'margin-bottom:16px' });
+  let note = { tags: parseTags(d.notes?.tags), note: d.notes?.note || '' };
+  const garminDesc = meta.activity?.description;
+  function showNotes() {
+    const empty = !note.tags.length && !note.note;
+    notesCard.replaceChildren(...[
+      h('div', { class: 'notes-head' }, h('h2', { style: 'margin:0' }, 'Notes'),
+        ...tagChips(note.tags, (t) => { location.hash = `#/activities?tag=${encodeURIComponent(t)}`; }),
+        h('button', { onclick: editNotes }, empty ? '+ Add note / tags' : 'Edit')),
+      note.note ? h('div', { class: 'note-text' }, note.note) : (empty ? h('div', { class: 'muted' }, 'No note yet.') : null),
+      garminDesc ? h('div', { class: 'note-text muted' }, h('b', {}, 'Garmin: '), garminDesc) : null].filter(Boolean));
+  }
+  async function editNotes() {
+    const known = await api('tags').catch(() => ({ tags: [] }));
+    let tags = [...note.tags];
+    const chipsEl = h('span', { class: 'tag-edit' });
+    const input = h('input', { type: 'text', placeholder: 'add tag…', list: 'tag-list', style: 'width:140px' });
+    const add = (t) => { t = t.trim().toLowerCase().replace(/[^\w@#%]+/g, '_').replace(/^_+|_+$/g, ''); if (t && !tags.includes(t)) tags.push(t); drawChips(); };
+    const drawChips = () => chipsEl.replaceChildren(...tags.map((t) => h('span', { class: 'tag' }, t,
+      h('button', { class: 'tag-x', title: 'remove', onclick: () => { tags = tags.filter((x) => x !== t); drawChips(); } }, '×'))));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(input.value); input.value = ''; }
+      else if (e.key === 'Backspace' && !input.value && tags.length) { tags.pop(); drawChips(); }
+    });
+    input.addEventListener('change', () => { if (input.value) { add(input.value); input.value = ''; } });
+    const counts = new Map(known.tags);
+    const sugg = TAG_SUGGESTIONS.map(([group, ts]) => h('div', { class: 'tag-sugg' }, h('span', { class: 'muted' }, group),
+      ...[...new Set([...ts, ...[...counts.keys()].filter((t) => group === 'Workout' && !TAG_SUGGESTIONS.some(([, xs]) => xs.includes(t)))])]
+        .map((t) => h('button', { class: 'tag ghost', onclick: () => add(t), title: counts.has(t) ? `used ${counts.get(t)}×` : 'suggestion' }, t))));
+    const text = h('textarea', { rows: 6, placeholder: 'How did it go? (Org text — saved to the notes file)' });
+    text.value = note.note;
+    const status = h('span', { class: 'muted' });
+    const save = async () => {
+      if (input.value) { add(input.value); input.value = ''; }
+      status.textContent = 'Saving…';
+      try {
+        const r = await postJson(`activity/${a.id}/notes`, { tags, note: text.value, base: note });
+        note = { tags: parseTags(r?.tags), note: r?.note || '' };
+        showNotes();
+      } catch (e) {
+        let msg = e.message;
+        try {
+          const j = JSON.parse(msg);
+          if (j.current) {
+            // someone edited the Org file meanwhile: take that as the new base, keep the user's text in the form
+            note = { tags: parseTags(j.current.tags), note: j.current.note || '' };
+            msg = `${j.error} — now: [${note.tags.join(', ')}] "${note.note.slice(0, 80)}". Save again to overwrite it.`;
+          }
+        } catch {}
+        status.textContent = msg;
+      }
+    };
+    notesCard.replaceChildren(
+      h('div', { class: 'notes-head' }, h('h2', { style: 'margin:0' }, 'Notes'), chipsEl, input,
+        h('datalist', { id: 'tag-list' }, [...counts.keys()].map((t) => h('option', { value: t })))),
+      ...sugg, text,
+      h('div', { class: 'notes-head' }, h('button', { class: 'primary', onclick: save }, 'Save'),
+        h('button', { onclick: showNotes }, 'Cancel'), status,
+        h('span', { class: 'muted', style: 'font-size:11px' }, known.file ? `→ ${known.file}` : '')));
+    drawChips();
+    input.focus();
+  }
+  showNotes();
+
   const issues = dqIssues(a.dq_flags);
   const dqNote = issues.length ? h('div', { class: 'card dq-note' }, h('b', {}, '⚠ Data quality'),
     h('ul', {}, issues.map((x) => h('li', {}, x))),
     JSON.parse(a.dq_flags).duplicate_of ? h('a', { href: `#/activity/${JSON.parse(a.dq_flags).duplicate_of}` }, 'Open the kept copy →') : null) : '';
-  app.replaceChildren(head, tiles, dqNote, modelCard ?? '', zoneCards,
+  app.replaceChildren(head, tiles, notesCard, dqNote, modelCard ?? '', zoneCards,
     h('div', { class: 'grid', style: `grid-template-columns:${hasGps ? 'minmax(0,5fr) minmax(0,6fr)' : '1fr'};margin-bottom:16px;align-items:start` },
       hasGps ? h('div', { class: 'card', style: 'position:sticky;top:60px' }, mapEl) : null,
       h('div', {}, t.length ? extraPicker : h('div', { class: 'empty' }, 'No time-series data for this activity (yet).'), selEl, chartsEl)),

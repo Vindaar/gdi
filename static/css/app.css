@@ -161,3 +161,19 @@ table.blocks th div:first-child { font-weight: 600; font-size: 13px; }
 .usage-bar { display: inline-block; width: 60px; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
 .usage-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
 .usage.over .usage-bar > span { background: var(--warning); }
+
+/* notes & tags */
+.tag { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border-radius: 10px; font-size: 12px;
+  background: var(--accent-wash); color: var(--ink); border: 1px solid transparent; min-height: 0; line-height: 18px; }
+button.tag { cursor: pointer; }
+.tag.ghost { background: transparent; border-color: var(--border); color: var(--ink-2); }
+.tag-x { border: none; background: none; padding: 0 0 0 2px; min-height: 0; color: var(--muted); cursor: pointer; }
+.notes-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.notes-head > button:last-child, .notes-head h2 { margin-right: 6px; }
+.tag-edit { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.tag-sugg { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 6px; }
+.tag-sugg > .muted { width: 80px; font-size: 12px; }
+.note-text { white-space: pre-wrap; margin-top: 4px; }
+.notes-card textarea { width: 100%; box-sizing: border-box; font: inherit; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 6px 0 8px; }
+td .tag { font-size: 11px; padding: 0 6px; margin-right: 2px; }

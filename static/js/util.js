@@ -475,3 +475,14 @@ export function dqBadge(flags) {
 
 // Garmin's post-activity prompt: perceived effort 1–10 and "how did you feel" 0–100
 export const FEEL_LABEL = (v) => (v == null ? null : ['very weak', 'weak', 'normal', 'strong', 'very strong'][Math.round(v / 25)] ?? null);
+
+// ── notes & tags (Org file, see gdi_notes.nim) ──────────────────────────────
+export const parseTags = (t) => { try { return t ? (typeof t === 'string' ? JSON.parse(t) : t) : []; } catch { return []; } };
+export const TAG_SUGGESTIONS = [
+  ['Workout', ['easy', 'long', 'tempo', 'threshold', 'intervals', 'hills', 'strides', 'race', 'recovery', 'loop']],
+  ['Body', ['tired', 'sick', 'sore', 'calf', 'achilles', 'knee', 'hip', 'foot', 'great']],
+  ['Conditions', ['heat', 'cold', 'wind', 'rain', 'night', 'fasted', 'treadmill', 'altitude', 'new_shoes']],
+];
+export function tagChips(tags, onClick) {
+  return parseTags(tags).map((t) => h(onClick ? 'button' : 'span', { class: 'tag', onclick: onClick ? () => onClick(t) : null }, t));
+}

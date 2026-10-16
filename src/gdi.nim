@@ -2,7 +2,7 @@
 
 import std / [os, times, strformat]
 import cligen
-import gdi_db, gdi_import, gdi_server
+import gdi_db, gdi_import, gdi_server, gdi_notes
 
 const
   DefaultDb       = "data/gdi.sqlite"
@@ -22,16 +22,19 @@ proc importCmd(db = DefaultDb, activities = DefaultActivity,
 
 proc serveCmd(db = DefaultDb, activities = DefaultActivity,
               health = DefaultHealth, port = 8091, address = "127.0.0.1",
-              staticDir = "", watch = 60, user = "", password = "") =
+              staticDir = "", watch = 60, user = "", password = "", notes = "") =
   ## Serve the web UI + JSON API. Imports changed raw files on startup and
   ## then every `--watch` seconds (0 disables). Basic auth is enabled when
-  ## `--user` (or env GDI_USER, GDI_PASSWORD) is set.
+  ## `--user` (or env GDI_USER, GDI_PASSWORD) is set. `--notes` is the Org
+  ## file with per-activity notes/tags (default: exercise-notes.org next to
+  ## the activities directory).
   let conn = openDb(db)
-  let st = conn.scanAndImport(activities, health)
+  let nf = if notes.len > 0: notes.absolutePath else: defaultNotesFile(activities)
+  let st = conn.scanAndImport(activities, health, notesFile = nf)
   stderr.writeLine &"startup import: {st.imported} imported, {st.unchanged} unchanged"
   let sdir = if staticDir.len > 0: staticDir
              else: getAppDir() / "static"
-  serve(ServerCfg(db: conn, activityDir: activities, healthDir: health,
+  serve(ServerCfg(db: conn, activityDir: activities, healthDir: health, notesFile: nf,
                   staticDir: sdir, watchInterval: watch,
                   user: (if user.len > 0: user else: getEnv("GDI_USER")),
                   password: (if password.len > 0: password else: getEnv("GDI_PASSWORD"))),

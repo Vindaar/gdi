@@ -160,6 +160,11 @@ CREATE TABLE IF NOT EXISTS mmp (          -- mean-maximal values by duration
   PRIMARY KEY (activity_id, metric, duration)
 );
 CREATE INDEX IF NOT EXISTS mmp_md ON mmp(metric, duration, value);
+CREATE TABLE IF NOT EXISTS activity_notes ( -- from the notes Org file (gdi_notes), survives activity re-imports
+  activity_id INTEGER PRIMARY KEY,
+  tags        TEXT NOT NULL,          -- JSON array
+  note        TEXT
+);
 CREATE TABLE IF NOT EXISTS activity_gear ( -- every gear item linked to an activity
   activity_id INTEGER NOT NULL,
   uuid        TEXT NOT NULL,

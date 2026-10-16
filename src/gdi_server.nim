@@ -8,12 +8,12 @@ import std / [asynchttpserver, asyncdispatch, json, strutils, strformat, os,
               math, tables, times, base64, uri, sequtils, algorithm]
 import db_connector / sqlite3
 import zippy
-import gdi_db, gdi_import
+import gdi_db, gdi_import, gdi_notes
 
 type
   ServerCfg* = object
     db*: DbConn
-    activityDir*, healthDir*, staticDir*: string
+    activityDir*, healthDir*, staticDir*, notesFile*: string
     user*, password*: string        ## basic auth; empty user = disabled
     watchInterval*: int             ## seconds; 0 = no auto-import
 
@@ -98,7 +98,7 @@ proc familyFilter(family: string, alias = "a"): (string, seq[string]) =
 
 proc apiActivities(db: DbConn): JsonNode =
   db.queryTable("SELECT " & ActivityListCols.replace("id, name", "a.id, a.name") &
-    ", m.delta AS exp_delta, m.expected_pace, m.ref_pace, m.coef FROM activities a LEFT JOIN run_model m ON m.activity_id = a.id ORDER BY a.start_local DESC")
+    ", m.delta AS exp_delta, m.expected_pace, m.ref_pace, m.coef, n.tags, n.note FROM activities a LEFT JOIN run_model m ON m.activity_id = a.id LEFT JOIN activity_notes n ON n.activity_id = a.id ORDER BY a.start_local DESC")
 
 proc apiModelWindow(db: DbConn, id: string): JsonNode =
   ## Segments the run's expected-pace model was fitted on (for the scatter):
@@ -137,6 +137,7 @@ proc apiActivity(db: DbConn, id: string): JsonNode =
     "speedHist": db.queryTable("SELECT bucket, secs, gap_secs FROM speed_hist WHERE activity_id = ? ORDER BY bucket", id),
     "segments": db.queryTable("SELECT * FROM segments WHERE activity_id = ? ORDER BY idx", id),
     "hrRecovery": db.queryTable("SELECT * FROM hr_recovery WHERE activity_id = ? ORDER BY t_end", id),
+    "notes": db.queryTable("SELECT tags, note FROM activity_notes WHERE activity_id = ?", id).firstRowObj,
     "settings": db.settings(),
     "model": db.queryTable("SELECT * FROM run_model WHERE activity_id = ?", id).firstRowObj,
     "modelNoise": db.getValue(sql"SELECT value FROM meta WHERE key = 'run_model_noise'"),
@@ -491,6 +492,27 @@ proc handle*(cfg: ServerCfg, req: Request, prefix = ""): Future[void] {.async, g
         else: await req.sendJson(a)
       elif r.len == 3 and r[0] == "activity" and r[2] == "model-window":
         await req.sendJson(db.apiModelWindow(r[1]))
+      elif r.len == 3 and r[0] == "activity" and r[2] == "notes" and req.reqMethod == HttpPost:
+        let b = parseJson(req.body)
+        var tags: seq[string]
+        for t in b{"tags"}.getElems: tags.add t.getStr
+        # pick up edits made in the file meanwhile; refuse to overwrite them
+        discard db.importNotes(cfg.notesFile)
+        let cur = db.getRow(sql"SELECT tags, note FROM activity_notes WHERE activity_id = ?", r[1])
+        let curTags = (if cur[0].len > 0: parseJson(cur[0]) else: newJArray())
+        let base = b{"base"}
+        if base != nil and (base{"tags"} != curTags or base{"note"}.getStr != cur[1]):
+          await req.sendJson(%*{"error": "changed in the notes file meanwhile", "current":
+                                {"tags": $curTags, "note": cur[1]}}, Http409)
+        else:
+          db.saveNote(cfg.notesFile, parseInt(r[1]), tags, b{"note"}.getStr)
+          await req.sendJson(db.queryTable("SELECT tags, note FROM activity_notes WHERE activity_id = ?", r[1]).firstRowObj)
+      elif r == @["tags"]:
+        var arr = newJArray()
+        var ct = db.allTags()
+        ct.sort()
+        for t, n in ct: arr.add %*[t, n]
+        await req.sendJson(%*{"tags": arr, "file": cfg.notesFile})
       elif r.len == 3 and r[0] == "activity" and r[2] == "streams":
         await req.sendJson(db.apiStreams(parseInt(r[1])))
       elif r == @["efforts"]:
@@ -528,7 +550,7 @@ proc handle*(cfg: ServerCfg, req: Request, prefix = ""): Future[void] {.async, g
           db.setSetting("ui", stored)
         await req.sendJson(db.settings)
       elif r == @["reimport"] and req.reqMethod == HttpPost:
-        let st = db.scanAndImport(cfg.activityDir, cfg.healthDir)
+        let st = db.scanAndImport(cfg.activityDir, cfg.healthDir, notesFile = cfg.notesFile)
         await req.sendJson(%*{"imported": st.imported, "failed": st.failed,
                                "removed": st.removed})
       else:
@@ -551,7 +573,8 @@ proc watchLoop(cfg: ServerCfg) {.async.} =
     await sleepAsync(cfg.watchInterval * 1000)
     try:
       let st = cfg.db.scanAndImport(cfg.activityDir, cfg.healthDir,
-                                    proc (m: string) {.gcsafe.} = stderr.writeLine m)
+                                    (proc (m: string) {.gcsafe.} = stderr.writeLine m),
+                                    notesFile = cfg.notesFile)
       if st.imported + st.removed + st.failed > 0:
         stderr.writeLine &"[{now().format(\"HH:mm:ss\")}] auto-import: " &
                          &"{st.imported} imported, {st.removed} removed, {st.failed} failed"

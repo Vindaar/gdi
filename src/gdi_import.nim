@@ -6,7 +6,7 @@
 ## in the `files` table, so `scanAndImport` only touches what changed.
 
 import std / [os, json, math, strutils, strformat, times, tables, algorithm, sets, sequtils]
-import gdi_db, gdi_models, gdi_metrics
+import gdi_db, gdi_models, gdi_metrics, gdi_notes
 
 const
   ImporterVersion* = "15"
@@ -1093,8 +1093,9 @@ proc markDuplicates*(db: DbConn) =
 
 proc scanAndImport*(db: DbConn, activityDir, healthDir: string,
                     log: LogProc = (proc (m: string) {.gcsafe.} = stderr.writeLine m),
-                    metricsDir = ""): ImportStats =
-  ## `metricsDir` defaults to `<healthDir>/../metrics` (garmin sync-metrics).
+                    metricsDir = "", notesFile = ""): ImportStats =
+  ## `metricsDir` defaults to `<healthDir>/../metrics` (garmin sync-metrics),
+  ## `notesFile` to `exercise-notes.org` next to `activityDir` (gdi_notes).
   if db.getValue(sql"SELECT value FROM meta WHERE key = 'importer'") != ImporterVersion:
     log "importer version changed → re-importing everything"
     db.exec(sql"DELETE FROM files")
@@ -1105,6 +1106,10 @@ proc scanAndImport*(db: DbConn, activityDir, healthDir: string,
              elif healthDir.len > 0: healthDir.absolutePath.parentDir / "metrics"
              else: ""
   scanDir(db, mdir, "metrics", result, log)
+  let nf = if notesFile.len > 0: notesFile
+           elif activityDir.len > 0: defaultNotesFile(activityDir)
+           else: ""
+  if db.importNotes(nf): log "notes reloaded from " & nf
   # derived models depend on the whole history → rebuild after any change
   let empty = db.getValue(sql"SELECT COUNT(*) FROM run_model") == "0"
   if result.imported + result.removed > 0 or empty:
