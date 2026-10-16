@@ -2,7 +2,7 @@
 // shared time axis), plus an intraday view for a selected day.
 import {
   api, objects, h, fmtDur, fmtNum, remember, echart, chartTheme, baseAxis, baseTooltip,
-  series, segmented, tile, css, blueRamp, fmtKm, TYPE_LABEL, dataTable, fmtSpeedFor, speedUnit,
+  series, segmented, tile, css, blueRamp, fmtKm, TYPE_LABEL, dataTable, fmtSpeedFor, speedUnit, parseTags, tagChips, orgText,
 } from './util.js';
 import { withHrv, baselines, normalCard, unusualSignals, rollingBaseline, fmtClock } from './baselines.js';
 
@@ -213,7 +213,7 @@ export async function healthPage(app) {
 
   let dayChart = null;
   async function showDay(date, scroll = true) {
-    const j = await api(`health/${date}`);
+    const [j, diary] = await Promise.all([api(`health/${date}`), api(`diary?date=${date}`).catch(() => null)]);
     if (!j) return;
     selectedDay = date;
     markSelected();
@@ -258,12 +258,30 @@ export async function healthPage(app) {
       { key: 'aerobic_te', label: 'TE', fmt: (v) => fmtNum(v, 1) },
       { key: 'calories', label: 'kcal', fmt: (v) => fmtNum(v) },
     ], { sortKey: 'start_local', sortDesc: false })) : h('div', { class: 'muted', style: 'margin-bottom:12px' }, 'No activities on this day.');
+    // diary entries of that day (one entry may cover several activities)
+    const diaryItems = [];
+    if (diary) {
+      const seen = new Set();
+      for (const e of [...objects(diary.activities), ...objects(diary.day)]) {
+        const key = e.note + '|' + e.tags;
+        if (seen.has(key) || (!e.note && parseTags(e.tags).length === 0)) continue;
+        seen.add(key);
+        diaryItems.push(h('div', { class: 'diary-item' },
+          h('div', { class: 'notes-head', style: 'margin-bottom:2px' },
+            e.activity_id ? h('a', { href: `#/activity/${e.activity_id}` }, `${e.start_local.slice(11, 16)} ${e.name}`) : h('span', { class: 'muted' }, 'day note'),
+            ...tagChips(e.tags)),
+          e.note ? orgText(e.note) : null));
+      }
+    }
+    const diaryBox = diaryItems.length ? h('div', { style: 'margin-bottom:12px' }, h('h3', {}, 'Diary'), ...diaryItems) : null;
+    const dayTags = [...new Set(diaryItems.length && diary ? [...objects(diary.activities), ...objects(diary.day)].flatMap((e) => parseTags(e.tags)) : [])];
+    if (dayTags.length) dayBar.insertBefore(h('span', { style: 'display:inline-flex;gap:4px' }, ...tagChips(dayTags)), dayBar.lastChild);
     dayBox.replaceChildren(h('h2', {}, `Day detail — ${longDate}`),
       h('div', { class: 'tiles', style: 'margin-bottom:12px' },
         tile('Sleep', fmtDur(sl.sleepTimeSeconds)), tile('Sleep score', fmtNum(sl.sleepScores?.overall?.value)),
         tile('Resting HR', fmtNum(j.summary?.restingHeartRate), 'bpm'), tile('Steps', fmtNum(j.summary?.totalSteps)),
         tile('Stress avg', fmtNum(j.summary?.averageStressLevel)), tile('Body Battery', `${fmtNum(j.summary?.bodyBatteryLowestValue)}–${fmtNum(j.summary?.bodyBatteryHighestValue)}`)),
-      actTable,
+      actTable, diaryBox ?? '',
       h('div', { class: 'muted', style: 'font-size:12px' }, 'Heart rate, stress and Body Battery through the day (one panel each).'), el);
     dayChart = echart(el);
     const th = chartTheme();

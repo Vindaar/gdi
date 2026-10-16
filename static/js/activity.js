@@ -5,7 +5,7 @@ import {
   usesPace, TYPE_LABEL, css, series, zoneBlock, settingsZones, dataTable, objects,
   fmtDistanceLabel, segmented, remember, zoneOf,
   osmLayer,
-  dqIssues, FEEL_LABEL, parseTags, tagChips, TAG_SUGGESTIONS, postJson, exportMenu,
+  dqIssues, FEEL_LABEL, parseTags, tagChips, TAG_SUGGESTIONS, postJson, exportMenu, orgText,
 } from './util.js';
 import { runModelCard } from './runmodel.js';
 
@@ -351,22 +351,38 @@ export async function activityPage(app, id) {
     h('span', { class: 'muted' }, 'Drag on a chart to select a section: charts zoom, the map highlights it and its statistics appear above (double-click resets).'));
 
   const modelCard = await runModelCard(a, d.model, d.modelNoise);
-  // ── notes & tags (Org file; Garmin's own description read-only) ──
+  // ── diary entry (Org file): text read-only, tags editable, append-only notes ──
   const notesCard = h('div', { class: 'card notes-card', style: 'margin-bottom:16px' });
-  let note = { tags: parseTags(d.notes?.tags), note: d.notes?.note || '' };
+  let note = d.notes || {};
   const garminDesc = meta.activity?.description;
-  function showNotes() {
-    const empty = !note.tags.length && !note.note;
+  const tagsOf = () => parseTags(note.tags);
+  function showNotes(status = '') {
+    const tags = tagsOf();
+    const shared = (note.shared || []).map((x) => h('a', { href: `#/activity/${x.id}` }, `${x.start_local.slice(11, 16)} ${x.name}`));
     notesCard.replaceChildren(...[
-      h('div', { class: 'notes-head' }, h('h2', { style: 'margin:0' }, 'Notes'),
-        ...tagChips(note.tags, (t) => { location.hash = `#/activities?tag=${encodeURIComponent(t)}`; }),
-        h('button', { onclick: editNotes }, empty ? '+ Add note / tags' : 'Edit')),
-      note.note ? h('div', { class: 'note-text' }, note.note) : (empty ? h('div', { class: 'muted' }, 'No note yet.') : null),
-      garminDesc ? h('div', { class: 'note-text muted' }, h('b', {}, 'Garmin: '), garminDesc) : null].filter(Boolean));
+      h('div', { class: 'notes-head' }, h('h2', { style: 'margin:0' }, 'Diary'),
+        ...tagChips(tags, (t) => { location.hash = `#/activities?tag=${encodeURIComponent(t)}`; }),
+        h('button', { onclick: editTags }, tags.length ? 'Edit tags' : '+ Tags'),
+        note.date ? h('span', { class: 'muted', style: 'font-size:12px' }, `entry of ${note.date}`) : null),
+      shared.length ? h('div', { class: 'muted', style: 'font-size:12px;margin-bottom:4px' }, 'Same entry as: ', ...shared.flatMap((x, i) => (i ? [', ', x] : [x]))) : null,
+      note.note ? orgText(note.note) : h('div', { class: 'muted' }, 'No diary entry for this activity yet.'),
+      garminDesc ? h('div', { class: 'note-text muted' }, h('b', {}, 'Garmin: '), garminDesc) : null,
+      appendBox(), status ? h('div', { class: 'muted' }, status) : null].filter(Boolean));
   }
-  async function editNotes() {
+  function appendBox() {
+    const text = h('textarea', { rows: 2, placeholder: 'Add a note — appended to the end of this day\'s entry with a timestamp' });
+    const btn = h('button', { class: 'primary', onclick: async () => {
+      if (!text.value.trim()) return;
+      btn.disabled = true;
+      try { note = await postJson(`activity/${a.id}/append`, { text: text.value }) || {}; showNotes(); }
+      catch (e) { btn.disabled = false; showNotes(`Failed: ${e.message}`); }
+    } }, 'Append');
+    return h('div', { class: 'append-box' }, text, btn);
+  }
+  async function editTags() {
     const known = await api('tags').catch(() => ({ tags: [] }));
-    let tags = [...note.tags];
+    const base = tagsOf();
+    let tags = [...base];
     const chipsEl = h('span', { class: 'tag-edit' });
     const input = h('input', { type: 'text', placeholder: 'add tag…', list: 'tag-list', style: 'width:140px' });
     const add = (t) => { t = t.trim().toLowerCase().replace(/[^\w@#%]+/g, '_').replace(/^_+|_+$/g, ''); if (t && !tags.includes(t)) tags.push(t); drawChips(); };
@@ -376,41 +392,28 @@ export async function activityPage(app, id) {
       if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(input.value); input.value = ''; }
       else if (e.key === 'Backspace' && !input.value && tags.length) { tags.pop(); drawChips(); }
     });
-    input.addEventListener('change', () => { if (input.value) { add(input.value); input.value = ''; } });
     const counts = new Map(known.tags);
     const sugg = TAG_SUGGESTIONS.map(([group, ts]) => h('div', { class: 'tag-sugg' }, h('span', { class: 'muted' }, group),
       ...[...new Set([...ts, ...[...counts.keys()].filter((t) => group === 'Workout' && !TAG_SUGGESTIONS.some(([, xs]) => xs.includes(t)))])]
         .map((t) => h('button', { class: 'tag ghost', onclick: () => add(t), title: counts.has(t) ? `used ${counts.get(t)}×` : 'suggestion' }, t))));
-    const text = h('textarea', { rows: 6, placeholder: 'How did it go? (Org text — saved to the notes file)' });
-    text.value = note.note;
     const status = h('span', { class: 'muted' });
     const save = async () => {
       if (input.value) { add(input.value); input.value = ''; }
       status.textContent = 'Saving…';
-      try {
-        const r = await postJson(`activity/${a.id}/notes`, { tags, note: text.value, base: note });
-        note = { tags: parseTags(r?.tags), note: r?.note || '' };
-        showNotes();
-      } catch (e) {
+      try { note = await postJson(`activity/${a.id}/tags`, { tags, base }) || {}; showNotes(); }
+      catch (e) {
         let msg = e.message;
-        try {
-          const j = JSON.parse(msg);
-          if (j.current) {
-            // someone edited the Org file meanwhile: take that as the new base, keep the user's text in the form
-            note = { tags: parseTags(j.current.tags), note: j.current.note || '' };
-            msg = `${j.error} — now: [${note.tags.join(', ')}] "${note.note.slice(0, 80)}". Save again to overwrite it.`;
-          }
-        } catch {}
-        status.textContent = msg;
+        try { const j = JSON.parse(msg); if (j.current) { note = { ...note, tags: JSON.stringify(j.current) }; msg = `${j.error}: now [${j.current.join(', ')}] — edit again.`; } } catch {}
+        showNotes(msg);
       }
     };
     notesCard.replaceChildren(
-      h('div', { class: 'notes-head' }, h('h2', { style: 'margin:0' }, 'Notes'), chipsEl, input,
+      h('div', { class: 'notes-head' }, h('h2', { style: 'margin:0' }, 'Diary tags'), chipsEl, input,
         h('datalist', { id: 'tag-list' }, [...counts.keys()].map((t) => h('option', { value: t })))),
-      ...sugg, text,
-      h('div', { class: 'notes-head' }, h('button', { class: 'primary', onclick: save }, 'Save'),
-        h('button', { onclick: showNotes }, 'Cancel'), status,
-        h('span', { class: 'muted', style: 'font-size:11px' }, known.file ? `→ ${known.file}` : '')));
+      ...sugg,
+      h('div', { class: 'notes-head' }, h('button', { class: 'primary', onclick: save }, 'Save tags'),
+        h('button', { onclick: () => showNotes() }, 'Cancel'), status,
+        h('span', { class: 'muted', style: 'font-size:11px' }, known.file ? `→ heading tags in ${known.file}` : '')));
     drawChips();
     input.focus();
   }

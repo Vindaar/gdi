@@ -197,3 +197,9 @@ td .tag { font-size: 11px; padding: 0 6px; margin-right: 2px; }
   padding: 8px 12px; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
 .day-bar-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); }
 .day-bar .tag { text-decoration: none; }
+.append-box { display: flex; gap: 8px; align-items: flex-end; margin-top: 10px; }
+.append-box textarea { margin: 0; flex: 1; }
+.diary-item { border-left: 3px solid var(--border); padding: 4px 10px; margin-bottom: 8px; }
+.note-text.org { white-space: normal; }
+.note-text.org > div { white-space: pre-wrap; min-height: 1.2em; }
+.note-text.org .org-h { font-weight: 600; margin-top: 6px; }

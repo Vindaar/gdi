@@ -1,38 +1,42 @@
-## gdi_notes — per-activity notes and tags, kept in an Org file.
+## gdi_notes — the Org training diary as per-activity notes and tags.
 ##
-## The file (default: `exercise-notes.org` next to `exercise-history.raw`) is
-## the source of truth; you, an editor or the assistant may write it, and the
-## web UI edits it through `saveNote`. One level-1 heading per activity:
+## The diary (e.g. `~/org/exercise.org`, `gdi serve --notes FILE`) is the
+## source of truth and is read with orgParser's lossless mode. One level-1
+## heading per day:
 ##
-##   * <2026-10-16 Fri 10:14> Zaragoza Running                 :loop:easy:
+##   * <2025-04-27 Sun 09:51> optional title                    :trail:shins:
 ##   :PROPERTIES:
-##   :GARMIN_ID: 24742486524
+##   :GARMIN_ID: 18948065614 18948099999
 ##   :END:
-##   Free text (any Org, sub-headings included) until the next level-1 heading.
+##   Free text, pasted Garmin stats blocks, sub-headings …
 ##
-## Headings without a :GARMIN_ID: property and text before the first heading
-## are left alone.
+## An entry belongs to the activities in its `:GARMIN_ID:` (see
+## `gdi link-notes`), or — not yet linked — to the activities whose Connect
+## URLs it mentions; entries with neither are day notes. The web UI only
+## changes tags (`saveTags`) and appends timestamped messages (`appendNote`);
+## the prose stays Emacs territory. Each write re-reads the file first, so
+## edits made elsewhere are kept, and writes atomically.
 
-import std / [os, json, strutils, re, times, algorithm, tables, sequtils]
+import std / [os, json, strutils, re, times, tables, sequtils, sets]
 import db_connector / db_sqlite
+import orgparser
 import gdi_db
 
+let urlRe = re"connect\.garmin\.com/(?:modern|app)/activity/(\d+)"
+let dateRe = re"<(\d{4}-\d{2}-\d{2})"
+# lines of a pasted Garmin summary ("11.24 km Distance", "1:13:19 Time", …)
+let statRe = re("^\\s*[-\\d:.,]+\\s*(/km|km|m|bpm|spm|kcal|W|%|/100m|km/h)?\\s+" &
+  "(Distance|Time|Moving Time|Elapsed Time|Avg Pace|Best Pace|Avg Speed|Max Speed|" &
+  "Total Ascent|Total Descent|Calories|Avg HR|Max HR|Avg Cadence|Avg Power|" &
+  "Elevation range|Avg GAP|Training Effect)\\s*$")
+let connectRe = re"^\s*https?://connect\.garmin\.com/\S+\s*$"
+
 type
-  NoteEntry* = object
-    id*: int
-    tags*: seq[string]
-    body*: string
-    first*, last*: int        ## line range of the entry in the file (inclusive)
-
-const TagSep = ":"
-
-template filterIt(xs: seq[string], cond: untyped): seq[string] =
-  block:
-    var res: seq[string]
-    for it {.inject.} in xs:
-      if cond: res.add it
-    res
-
+  DiaryEntry* = object
+    node*: OrgNode
+    date*: string
+    ids*: seq[int]
+    linked*: bool          ## ids come from :GARMIN_ID: (else from URLs)
 
 proc defaultNotesFile*(activityDir: string): string =
   activityDir.absolutePath.parentDir / "exercise-notes.org"
@@ -42,45 +46,53 @@ proc cleanTag*(t: string): string =
   for c in t.strip.toLowerAscii:
     result.add(if c.isAlphaNumeric or c in {'_', '@', '#', '%'}: c else: '_')
 
-proc splitHeading(line: string): (string, seq[string]) =
-  ## "* title   :a:b:" → ("* title", @["a", "b"])
-  var m: array[2, string]
-  if line.match(re"^(\*.*?)\s+(:[\w@#%:]+:)\s*$", m):
-    (m[0], m[1].strip(chars = {':'}).split(TagSep).filterIt(it.len > 0))
-  else:
-    (line.strip(leading = false), @[])
+proc drawerIndex(body: OrgNode): int =
+  ## index of a property drawer directly below the heading, else -1
+  for i, x in body.children:
+    if x.kind == ogText and x.text.strip.len == 0: continue
+    return (if x.kind == ogPropertyList: i else: -1)
+  -1
 
-proc parseNotes*(lines: seq[string]): seq[NoteEntry] =
-  var i = 0
-  while i < lines.len:
-    if not lines[i].startsWith("* "):
-      inc i; continue
-    let start = i
-    var stop = i + 1
-    while stop < lines.len and not lines[stop].startsWith("* "): inc stop
-    # properties drawer right below the heading
-    var id = 0
-    var bodyStart = start + 1
-    if bodyStart < stop and lines[bodyStart].strip == ":PROPERTIES:":
-      var k = bodyStart + 1
-      while k < stop and lines[k].strip != ":END:":
-        let p = lines[k].strip
-        if p.toUpperAscii.startsWith(":GARMIN_ID:"):
-          try: id = parseInt(p[":GARMIN_ID:".len .. ^1].strip) except ValueError: discard
-        inc k
-      bodyStart = k + 1
-    if id != 0:
-      let (_, tags) = splitHeading(lines[start])
-      var body = lines[min(bodyStart, stop) ..< stop].join("\n").strip(chars = {'\n', ' '})
-      result.add NoteEntry(id: id, tags: tags, body: body, first: start, last: stop - 1)
-    i = stop
+proc entries*(org: OrgNode): seq[DiaryEntry] =
+  {.cast(gcsafe).}:
+    for x in org:
+      if x.kind != ogSection or x.sec.level != 1: continue
+      var e = DiaryEntry(node: x)
+      var m: array[1, string]
+      if x.sec.rawHeading.find(dateRe, m) >= 0 or ($x.sec.title).find(dateRe, m) >= 0:
+        e.date = m[0]
+      let di = drawerIndex(x.sec.body)
+      if di >= 0:
+        for p in x.sec.body.children[di].propList:
+          if p.key.toUpperAscii == "GARMIN_ID":
+            for t in ($p.value).splitWhitespace:
+              try: e.ids.add parseInt(t) except ValueError: discard
+      e.linked = e.ids.len > 0
+      if not e.linked:
+        var seen = initHashSet[int]()
+        for s in ($x).findAll(urlRe):
+          var mm: array[1, string]
+          if s.match(urlRe, mm) and parseInt(mm[0]) notin seen:
+            seen.incl parseInt(mm[0]); e.ids.add parseInt(mm[0])
+      result.add e
 
-proc readLines(path: string): seq[string] =
-  if fileExists(path): readFile(path).splitLines else: @[]
+proc displayText*(e: DiaryEntry): string =
+  ## The entry's text for display: body without the drawer and without
+  ## pasted Garmin stats blocks / Connect URLs; blank-line runs collapsed.
+  {.cast(gcsafe).}:
+    var parts: seq[string]
+    let di = drawerIndex(e.node.sec.body)
+    for i, x in e.node.sec.body.children:
+      if i != di: parts.add $x
+    var outL: seq[string]
+    for l in parts.join("").splitLines:
+      if l.match(statRe) or l.match(connectRe): continue
+      if l.strip.len == 0 and (outL.len == 0 or outL[^1].strip.len == 0): continue
+      outL.add l
+    outL.join("\n").strip
 
 proc importNotes*(db: DbConn, path: string, force = false): bool =
-  ## Re-read the notes file into `activity_notes` when it changed (tracked in
-  ## `files` like the raw data). Returns true if anything was (re)loaded.
+  ## Re-read the diary into `activity_notes` / `day_notes` when it changed.
   if path.len == 0: return false
   let key = path.absolutePath
   var mtime, size = "0"
@@ -90,93 +102,106 @@ proc importNotes*(db: DbConn, path: string, force = false): bool =
     size = $info.size
   let prev = db.getRow(sql"SELECT mtime, size FROM files WHERE path = ?", key)
   if not force and prev[0] == mtime and prev[1] == size: return false
+  let es = (if fileExists(key): entries(parseOrg(key)) else: @[])
   db.exec(sql"BEGIN")
   db.exec(sql"DELETE FROM activity_notes")
-  for e in parseNotes(readLines(key)):
-    db.exec(sql"INSERT OR REPLACE INTO activity_notes(activity_id, tags, note) VALUES (?, ?, ?)",
-            e.id, $(%e.tags), e.body)
+  db.exec(sql"DELETE FROM day_notes")
+  for e in es:
+    let tags = $(%e.node.sec.tags)
+    let text = displayText(e)
+    if e.ids.len == 0:
+      db.exec(sql"INSERT INTO day_notes(date, tags, note) VALUES (?, ?, ?)", e.date, tags, text)
+    for id in e.ids:
+      # several entries may mention one activity: keep the linked / first one
+      if db.getValue(sql"SELECT 1 FROM activity_notes WHERE activity_id = ?", id).len == 0:
+        db.exec(sql"""INSERT INTO activity_notes(activity_id, date, tags, note, shared_with)
+                      VALUES (?, ?, ?, ?, ?)""", id, e.date, tags, text,
+                $(%e.ids.filterIt(it != id)))
   db.exec(sql"INSERT OR REPLACE INTO files(path, kind, mtime, size, imported_at) VALUES (?, 'notes', ?, ?, ?)",
           key, mtime, size, $getTime().toUnix)
   db.exec(sql"COMMIT")
   true
 
-proc orgStamp(startLocal: string): string =
-  ## "2026-10-16T10:14:46.0" → "<2026-10-16 Fri 10:14>"
+# ── writing (tags + append only) ────────────────────────────────────────────
+
+proc orgStamp(startLocal: string, active = true): string =
+  ## "2026-10-16T10:14:46.0" → "<2026-10-16 Fri 10:14>" (or "[…]")
+  let (o, c) = (if active: ("<", ">") else: ("[", "]"))
   try:
     let dt = parse(startLocal[0 ..< 16], "yyyy-MM-dd'T'HH:mm")
-    "<" & dt.format("yyyy-MM-dd ddd HH:mm") & ">"
-  except CatchableError: "<" & startLocal & ">"
+    o & dt.format("yyyy-MM-dd ddd HH:mm") & c
+  except CatchableError: o & startLocal & c
 
-proc headingLine(title: string, tags: seq[string]): string =
-  if tags.len == 0: return title
-  let t = ":" & tags.join(TagSep) & ":"
-  # right-align the tags at column 77 like Org does (at least one space)
-  title & spaces(max(1, 77 - title.len - t.len)) & t
-
-proc saveNote*(db: DbConn, path: string, id: int, tags: seq[string], body: string) =
-  ## Write one activity's tags and text into the notes file (atomic replace)
-  ## and reload it. Empty tags + text remove the entry, unless it carries
-  ## other properties.
-  var tags = tags
-  for t in tags.mitems: t = cleanTag(t)
-  tags = tags.filterIt(it.len > 0)
-  tags = deduplicate(tags)
-  let body = body.strip(chars = {'\n', ' ', '\r'}).replace("\r\n", "\n")
-  var lines = readLines(path)
-  if lines.len > 0 and lines[^1] == "": lines.setLen(lines.len - 1)
-  let entries = parseNotes(lines)
-  # a body line starting with "* " would start a new entry → demote it
-  var bodyLines = (if body.len > 0: body.splitLines else: @[])
-  for l in bodyLines.mitems:
-    if l.startsWith("* "): l = "*" & l
-  var existing = -1
-  for k, e in entries:
-    if e.id == id: existing = k
-  if existing >= 0:
-    let e = entries[existing]
-    let (title, _) = splitHeading(lines[e.first])
-    # keep the properties drawer as it is
-    var drawer: seq[string]
-    var k = e.first + 1
-    if k <= e.last and lines[k].strip == ":PROPERTIES:":
-      while k <= e.last:
-        drawer.add lines[k]
-        if lines[k].strip == ":END:": break
-        inc k
-    let onlyId = drawer.len <= 3
-    var repl: seq[string]
-    if tags.len > 0 or bodyLines.len > 0 or not onlyId:
-      repl = @[headingLine(title, tags)] & drawer & bodyLines
-      if e.last + 1 < lines.len: repl.add ""
-    lines = lines[0 ..< e.first] & repl & lines[e.last + 1 .. ^1]
-  elif tags.len > 0 or bodyLines.len > 0:
-    let r = db.getRow(sql"SELECT start_local, name FROM activities WHERE id = ?", id)
-    let title = "* " & orgStamp(r[0]) & " " & r[1]
-    let entry = @[headingLine(title, tags), ":PROPERTIES:", ":GARMIN_ID: " & $id, ":END:"] & bodyLines
-    # chronological position: before the first entry with a later timestamp
-    var at = lines.len
-    let stamp = orgStamp(r[0])
-    for e in entries:
-      let i0 = lines[e.first].find('<')
-      if i0 >= 0 and lines[e.first][i0 .. min(lines[e.first].high, i0 + 21)] > stamp:
-        at = e.first; break
-    if lines.len == 0:
-      lines = @["#+TITLE: Exercise notes",
-                "#+COMMENT: One heading per activity (:GARMIN_ID:), tags on the heading.",
-                "#+COMMENT: Read by the Garmin dashboard (gdi); edits there are written back here.",
-                ""]
-      at = lines.len
-    if at == lines.len:
-      if lines.len > 0 and lines[^1] != "": lines.add ""
-      lines.add entry
-    else:
-      lines = lines[0 ..< at] & entry & @[""] & lines[at .. ^1]
-  let tmp = path & ".tmp"
-  createDir(path.parentDir)
-  writeFile(tmp, lines.join("\n") & "\n")
+proc writeDiary(path: string, org: OrgNode) =
+  let tmp = path & ".gdi.tmp"
+  writeFile(tmp, $org)
   moveFile(tmp, path)
+
+proc findOrCreate(db: DbConn, org: OrgNode, id: int): OrgNode =
+  ## The entry for activity `id`; a new dated heading (in date order) if none.
+  {.cast(gcsafe).}:
+    for e in entries(org):
+      if id in e.ids: return e.node
+    let r = db.getRow(sql"SELECT start_local, name FROM activities WHERE id = ?", id)
+    if r[0].len == 0: raise newException(ValueError, "unknown activity " & $id)
+    let text = "* " & orgStamp(r[0]) & " " & r[1] & "\n:PROPERTIES:\n:GARMIN_ID: " & $id & "\n:END:\n"
+    var newSec: OrgNode
+    for x in parseOrgString(text):
+      if x.kind == ogSection: newSec = x
+    # insert before the first entry dated after this activity
+    let day = r[0][0 ..< 10]
+    var at = org.children.len
+    for i, x in org.children:
+      if x.kind == ogSection and x.sec.level == 1:
+        var m: array[1, string]
+        if x.sec.rawHeading.find(dateRe, m) >= 0 and m[0] > day:
+          at = i; break
+    if at == org.children.len:
+      let cur = $org
+      if cur.len > 0 and not cur.endsWith("\n"):
+        org.children.add OrgNode(kind: ogText, text: "\n")
+      at = org.children.len
+    org.children.insert(newSec, at)
+    newSec
+
+proc saveTags*(db: DbConn, path: string, id: int, tags: seq[string]) =
+  ## Set the tags of activity `id`'s diary entry (creating the entry if needed).
+  var ts: seq[string]
+  for t in tags:
+    let c = cleanTag(t)
+    if c.len > 0 and c notin ts: ts.add c
+  let org = (if fileExists(path): parseOrg(path) else: parseOrgString(""))
+  let sec = findOrCreate(db, org, id)
+  sec.setTags(ts)
+  writeDiary(path, org)
+  discard db.importNotes(path, force = true)
+
+proc appendNote*(db: DbConn, path: string, id: int, text: string) =
+  ## Append "[timestamp] text" after the entry's own text (before any
+  ## sub-heading) of activity `id`'s diary entry.
+  let msg = text.strip.replace("\r\n", "\n")
+  if msg.len == 0: return
+  var lines = msg.splitLines
+  for l in lines.mitems:
+    if l.startsWith("*"): l = " " & l      # never start a heading
+  let stamped = orgStamp(now().format("yyyy-MM-dd'T'HH:mm"), active = false) & " " & lines.join("\n")
+  let org = (if fileExists(path): parseOrg(path) else: parseOrgString(""))
+  let sec = findOrCreate(db, org, id)
+  let body = sec.sec.body
+  var k = body.children.len
+  for i, x in body.children:
+    if x.kind == ogSection: k = i; break
+  var before = ""
+  for i in 0 ..< k: before.add $body.children[i]
+  let prefix = (if before.len == 0 or before.endsWith("\n\n"): ""
+                elif before.endsWith("\n"): "\n" else: "\n\n")
+  # when another heading follows, the newline ending this entry belongs to
+  # the parent level; add our own only where nothing else ends the line
+  let suffix = (if k < body.children.len or before.endsWith("\n") or before.len == 0: "\n" else: "")
+  body.children.insert(OrgNode(kind: ogText, text: prefix & stamped & suffix), k)
+  writeDiary(path, org)
   discard db.importNotes(path, force = true)
 
 proc allTags*(db: DbConn): CountTable[string] =
-  for r in db.rows(sql"SELECT tags FROM activity_notes"):
+  for r in db.rows(sql"SELECT tags FROM activity_notes UNION ALL SELECT tags FROM day_notes"):
     for t in parseJson(r[0]): result.inc t.getStr

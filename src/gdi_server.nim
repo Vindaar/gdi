@@ -117,6 +117,17 @@ proc apiModelWindow(db: DbConn, id: string): JsonNode =
             AND julianday(a.start_local) >= julianday(me.start_local) - {days})
            OR a.id = me.id)""", id, id)
 
+proc apiNotes(db: DbConn, id: string): JsonNode =
+  ## the diary entry of an activity (tags, display text, other activities in it)
+  result = db.queryTable("""SELECT n.tags, n.note, n.date, n.shared_with FROM activity_notes n
+      WHERE n.activity_id = ?""", id).firstRowObj
+  if result.kind == JObject and result{"shared_with"}.getStr.len > 0:
+    var other = newJArray()
+    for x in parseJson(result["shared_with"].getStr):
+      let r = db.getRow(sql"SELECT name, start_local FROM activities WHERE id = ?", x.getInt)
+      other.add %*{"id": x, "name": r[0], "start_local": r[1]}
+    result["shared"] = other
+
 proc apiActivity(db: DbConn, id: string): JsonNode =
   let a = db.queryTable("SELECT * FROM activities WHERE id = ?", id).firstRowObj
   if a.kind == JNull: return newJNull()
@@ -137,7 +148,7 @@ proc apiActivity(db: DbConn, id: string): JsonNode =
     "speedHist": db.queryTable("SELECT bucket, secs, gap_secs FROM speed_hist WHERE activity_id = ? ORDER BY bucket", id),
     "segments": db.queryTable("SELECT * FROM segments WHERE activity_id = ? ORDER BY idx", id),
     "hrRecovery": db.queryTable("SELECT * FROM hr_recovery WHERE activity_id = ? ORDER BY t_end", id),
-    "notes": db.queryTable("SELECT tags, note FROM activity_notes WHERE activity_id = ?", id).firstRowObj,
+    "notes": db.apiNotes(id),
     "settings": db.settings(),
     "model": db.queryTable("SELECT * FROM run_model WHERE activity_id = ?", id).firstRowObj,
     "modelNoise": db.getValue(sql"SELECT value FROM meta WHERE key = 'run_model_noise'"),
@@ -492,21 +503,30 @@ proc handle*(cfg: ServerCfg, req: Request, prefix = ""): Future[void] {.async, g
         else: await req.sendJson(a)
       elif r.len == 3 and r[0] == "activity" and r[2] == "model-window":
         await req.sendJson(db.apiModelWindow(r[1]))
-      elif r.len == 3 and r[0] == "activity" and r[2] == "notes" and req.reqMethod == HttpPost:
+      elif r.len == 3 and r[0] == "activity" and r[2] == "tags" and req.reqMethod == HttpPost:
         let b = parseJson(req.body)
         var tags: seq[string]
         for t in b{"tags"}.getElems: tags.add t.getStr
         # pick up edits made in the file meanwhile; refuse to overwrite them
         discard db.importNotes(cfg.notesFile)
-        let cur = db.getRow(sql"SELECT tags, note FROM activity_notes WHERE activity_id = ?", r[1])
-        let curTags = (if cur[0].len > 0: parseJson(cur[0]) else: newJArray())
+        let cur = db.getValue(sql"SELECT tags FROM activity_notes WHERE activity_id = ?", r[1])
+        let curTags = (if cur.len > 0: parseJson(cur) else: newJArray())
         let base = b{"base"}
-        if base != nil and (base{"tags"} != curTags or base{"note"}.getStr != cur[1]):
-          await req.sendJson(%*{"error": "changed in the notes file meanwhile", "current":
-                                {"tags": $curTags, "note": cur[1]}}, Http409)
+        if base != nil and base != curTags:
+          await req.sendJson(%*{"error": "tags changed in the diary meanwhile", "current": curTags}, Http409)
         else:
-          db.saveNote(cfg.notesFile, parseInt(r[1]), tags, b{"note"}.getStr)
-          await req.sendJson(db.queryTable("SELECT tags, note FROM activity_notes WHERE activity_id = ?", r[1]).firstRowObj)
+          db.saveTags(cfg.notesFile, parseInt(r[1]), tags)
+          await req.sendJson(db.apiNotes(r[1]))
+      elif r.len == 3 and r[0] == "activity" and r[2] == "append" and req.reqMethod == HttpPost:
+        db.appendNote(cfg.notesFile, parseInt(r[1]), parseJson(req.body){"text"}.getStr)
+        await req.sendJson(db.apiNotes(r[1]))
+      elif r == @["diary"]:
+        let d = qp.getOrDefault("date", "")
+        await req.sendJson(%*{
+          "activities": db.queryTable("""SELECT n.activity_id, a.name, a.type_key, a.start_local, n.tags, n.note
+              FROM activity_notes n JOIN activities a ON a.id = n.activity_id
+              WHERE substr(a.start_local, 1, 10) = ? OR n.date = ? ORDER BY a.start_local""", d, d),
+          "day": db.queryTable("SELECT tags, note FROM day_notes WHERE date = ?", d)})
       elif r == @["export"]:
         var ids: seq[int]
         for x in qp.getOrDefault("ids", "").split(','):

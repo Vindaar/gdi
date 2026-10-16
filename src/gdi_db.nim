@@ -160,11 +160,19 @@ CREATE TABLE IF NOT EXISTS mmp (          -- mean-maximal values by duration
   PRIMARY KEY (activity_id, metric, duration)
 );
 CREATE INDEX IF NOT EXISTS mmp_md ON mmp(metric, duration, value);
-CREATE TABLE IF NOT EXISTS activity_notes ( -- from the notes Org file (gdi_notes), survives activity re-imports
+CREATE TABLE IF NOT EXISTS activity_notes ( -- diary entry per activity (gdi_notes), survives activity re-imports
   activity_id INTEGER PRIMARY KEY,
-  tags        TEXT NOT NULL,          -- JSON array
+  date        TEXT,                   -- the entry's heading date
+  tags        TEXT NOT NULL,          -- JSON array (the entry's heading tags)
+  note        TEXT,                   -- display text (no drawer / pasted stats)
+  shared_with TEXT                    -- JSON array: other activities in the same entry
+);
+CREATE TABLE IF NOT EXISTS day_notes (     -- diary entries without an activity
+  date        TEXT,
+  tags        TEXT NOT NULL,
   note        TEXT
 );
+CREATE INDEX IF NOT EXISTS day_notes_date ON day_notes(date);
 CREATE TABLE IF NOT EXISTS activity_gear ( -- every gear item linked to an activity
   activity_id INTEGER NOT NULL,
   uuid        TEXT NOT NULL,
@@ -274,6 +282,15 @@ proc openDb*(path: string): DbConn =
                      ("dq_flags", "TEXT"), ("rpe", "REAL"), ("feel", "REAL")]:
     if col notin cols:
       result.exec(sql("ALTER TABLE activities ADD COLUMN " & col & " " & typ))
+  # notes tables are derived from the diary file: recreate on layout change
+  var ncols: seq[string]
+  for r in result.rows(sql"PRAGMA table_info(activity_notes)"): ncols.add r[1]
+  if "shared_with" notin ncols:
+    result.exec(sql"DROP TABLE IF EXISTS activity_notes")
+    result.exec(sql"DELETE FROM files WHERE kind = 'notes'")
+    for stmt in Schema.split(';'):
+      if "activity_notes" in stmt or "day_notes" in stmt:
+        if stmt.strip.len > 0: result.exec(sql(stmt))
   var hcols: seq[string]
   for r in result.rows(sql"PRAGMA table_info(health_days)"): hcols.add r[1]
   for col in ["bed_time", "wake_time"]:

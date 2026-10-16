@@ -517,3 +517,34 @@ export function exportMenu(getIds, label = '⤓ Export') {
   box.addEventListener('toggle', () => { if (box.open) draw(); });
   return box;
 }
+
+/** Light Org rendering for diary text: headings bold, [[link][desc]] and bare
+ *  URLs clickable (Garmin Connect activity links → this app), *bold*,
+ *  /italic/, =code= and ~code~. Everything else is shown as written. */
+export function orgText(text) {
+  const conn = /connect\.garmin\.com\/(?:modern|app)\/activity\/(\d+)/;
+  const href = (u) => { const m = u.match(conn); return m ? `#/activity/${m[1]}` : u; };
+  const inline = (s) => {
+    const out = [];
+    const re = /\[\[([^\]]+)\](?:\[([^\]]+)\])?\]|(https?:\/\/[^\s<>\]]+)|(^|[\s(])([*/=~])([^\s*/=~](?:[^*/=~\n]*[^\s*/=~])?)\5(?=[\s.,;:!?)]|$)/g;
+    let last = 0, m;
+    while ((m = re.exec(s))) {
+      const pre = m[4] ?? '';
+      out.push(s.slice(last, m.index) + pre);
+      if (m[1]) out.push(h('a', { href: href(m[1]), target: href(m[1]).startsWith('#') ? null : '_blank', rel: 'noopener' }, m[2] || m[1]));
+      else if (m[3]) out.push(h('a', { href: href(m[3]), target: href(m[3]).startsWith('#') ? null : '_blank', rel: 'noopener' }, m[3]));
+      else {
+        const tag = { '*': 'b', '/': 'i', '=': 'code', '~': 'code' }[m[5]];
+        out.push(h(tag, {}, m[6]));
+      }
+      last = re.lastIndex;
+    }
+    out.push(s.slice(last));
+    return out;
+  };
+  return h('div', { class: 'note-text org' }, ...text.split('\n').map((line) => {
+    const hm = line.match(/^(\*+)\s+(.*)$/);
+    if (hm) return h('div', { class: 'org-h' }, ...inline(hm[2]));
+    return h('div', {}, ...(line ? inline(line) : [' ']));
+  }));
+}
