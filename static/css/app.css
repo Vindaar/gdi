@@ -71,6 +71,22 @@
   --s5: #c0609f; --s6: #4f9a3a; --s7: #8d7be0; --s8: #d9505c;
   --z0: #3b4252; --z1: #184f95; --z2: #1c5cab; --z3: #2a78d6; --z4: #5598e7; --z5: #9ec5f4;
 }
+/* Monokai: the editor palette for text and accents; chart colours keep its
+   hues but are stepped darker so marks don't glow on the dark surface */
+:root[data-theme="monokai"] {
+  color-scheme: dark;
+  --page: #1e1f1c; --surface: #272822; --surface-2: #3e3d32;
+  --ink: #f8f8f2; --ink-2: #cfcfc2; --muted: #908c76;
+  --grid: #383930; --axis: #49483e; --border: rgba(248, 248, 242, 0.11);
+  --accent: #66d9ef; --accent-wash: rgba(102, 217, 239, 0.13); --on-accent: #1e1f1c;
+  --good: #a6e22e; --critical: #f92672; --warning: #e6db74;
+  --s1: #22a3b8; --s2: #d87500; --s3: #a174f1; --s4: #6fa700;
+  --s5: #f92672; --s6: #a09527; --s7: #5f8cff; --s8: #ed5d3a;
+  --z0: #3e3d32; --z1: #184f95; --z2: #1c5cab; --z3: #2a78d6; --z4: #5598e7; --z5: #9ec5f4;
+}
+:root[data-theme="monokai"] h1, :root[data-theme="monokai"] .brand { color: #a6e22e; }
+:root[data-theme="monokai"] h2 { color: #fd971f; }
+
 /* Black: true black for OLED screens */
 :root[data-theme="black"] {
   color-scheme: dark;

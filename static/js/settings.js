@@ -2,7 +2,7 @@
 import {
   api, postJson, h, fmtPace, hrZoneLabels, paceZoneLabels, ZONE_PRESETS, DEFAULT_ZONE_PALETTE,
   zonePaletteColors, applyZonePalette, SEQ_PRESETS, DEFAULT_SEQ_PALETTE, seqStops,
-  THEMES, currentTheme, setTheme,
+  THEMES, currentTheme, setTheme, CAT_PRESETS, css,
 } from './util.js';
 
 export async function settingsPage(app) {
@@ -122,7 +122,7 @@ export async function settingsPage(app) {
     const cur = currentTheme();
     themeBox.replaceChildren(...Object.entries(THEMES).map(([k, t]) => h('button', {
       class: 'theme-opt' + (cur === k ? ' selected' : ''), 'aria-pressed': cur === k ? 'true' : 'false',
-      onclick: () => { setTheme(k); drawThemes(); drawPresets(); drawSeq(); },
+      onclick: () => { setTheme(k); drawThemes(); drawPresets(); drawSeq(); drawCat(); },
     }, themePreview(t), h('span', { class: 'theme-name' }, t.label), t.note ? h('span', { class: 'muted theme-note' }, t.note) : null)));
   }
   drawThemes();
@@ -130,6 +130,39 @@ export async function settingsPage(app) {
     h('h2', {}, 'Theme'),
     h('p', { class: 'sub' }, 'Stored in this browser, so phone and desktop can differ. Charts use the theme\'s colours from the next page you open.'),
     themeBox);
+
+  // ── discrete series colours (server-side, like the zone colours) ──
+  const catBox = h('div', { style: 'display:flex;flex-wrap:wrap;gap:8px;align-items:center' });
+  const catMsg = h('span', { class: 'muted' });
+  function themeSeries() {
+    // the theme's own series colours, without a series-palette override
+    const root = document.documentElement.style;
+    const saved = Array.from({ length: 8 }, (_, i) => root.getPropertyValue(`--s${i + 1}`));
+    saved.forEach((_, i) => root.removeProperty(`--s${i + 1}`));
+    const cols = saved.map((_, i) => css(`--s${i + 1}`));
+    saved.forEach((v, i) => { if (v) root.setProperty(`--s${i + 1}`, v); });
+    return cols;
+  }
+  function drawCat() {
+    const cur = s.catPalette || 'theme';
+    catBox.replaceChildren(...Object.entries(CAT_PRESETS).map(([k, p]) => {
+      const cols = p.colors ? p.colors() : themeSeries();
+      const dots = h('span', { style: 'display:flex;gap:3px' },
+        Array.from({ length: 8 }, (_, i) => h('span', { style: `width:12px;height:12px;border-radius:50%;background:${cols[i]}` })));
+      return h('button', {
+        class: cur === k ? 'primary' : '', style: 'display:flex;gap:8px;align-items:center', title: p.note,
+        onclick: async () => {
+          s.catPalette = k; applyZonePalette({ ...s }); drawCat();
+          await postJson('settings', { catPalette: k }); catMsg.textContent = 'Saved.';
+        } }, dots, p.label);
+    }));
+  }
+  drawCat();
+  const catCard = h('div', { class: 'card', style: 'margin-top:16px' },
+    h('h2', {}, 'Series colours'),
+    h('p', { class: 'sub' }, 'Colours for discrete groups (years in Analysis, activity types, gear …), up to 8 before the rest folds into "other". ',
+      'ggplot2 hue spaces 8 hues evenly around the HCL wheel starting at 285° (as ggplot2/ggplotnim do for 8 levels). It ignores the theme, and some neighbours are hard to tell apart with red-green colour blindness (e.g. olive vs. green).'),
+    catBox, h('div', { style: 'margin-top:8px' }, catMsg));
 
   app.replaceChildren(
     h('div', { class: 'page-head' }, h('h1', {}, 'Settings')),
@@ -144,5 +177,5 @@ export async function settingsPage(app) {
           paceInputs.map((i, k) => h('label', {}, `Z${k + 1} ${s.paceZoneNames[k]}`, i))))),
     preview,
     h('div', { style: 'margin-top:16px;display:flex;gap:12px;align-items:center' }, h('button', { class: 'primary', onclick: save }, 'Save'), msg),
-    colorCard, seqCard);
+    colorCard, catCard, seqCard);
 }

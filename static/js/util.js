@@ -433,6 +433,7 @@ export const THEMES = {
   dark:     { label: 'Dark', swatch: ['#0d0d0d', '#1a1a19', '#f0efec', '#3987e5', '#3987e5', '#d95926', '#199e70', '#c98500'] },
   sepia:    { label: 'Sepia', note: 'warm paper', swatch: ['#f4ecd8', '#fbf5e6', '#2b2117', '#a24d17', '#2f6db3', '#c4581f', '#008f74', '#a87a00'] },
   nord:     { label: 'Nord', note: 'cool slate', swatch: ['#242933', '#2e3440', '#eceff4', '#88c0d0', '#5e8fd6', '#cc6436', '#21998a', '#b88a10'] },
+  monokai:  { label: 'Monokai', note: 'the editor classic', swatch: ['#1e1f1c', '#272822', '#f8f8f2', '#66d9ef', '#a6e22e', '#f92672', '#fd971f', '#ae81ff'] },
   black:    { label: 'Black', note: 'true black for OLED screens', swatch: ['#000000', '#0a0a0a', '#f5f5f5', '#3987e5', '#3987e5', '#d95926', '#199e70', '#c98500'] },
   contrast: { label: 'High contrast', swatch: ['#ffffff', '#ffffff', '#000000', '#0050a8', '#0060a8', '#c24e00', '#008266', '#9a6b00'] },
 };
@@ -446,6 +447,28 @@ export function setTheme(name) {
   applyZonePalette();   // zone presets have light / dark variants
 }
 
+// ── discrete series colours ─────────────────────────────────────────────────
+/** polar CIE-LUV (R's hcl(), as used by ggplot2's hue_pal) → sRGB hex, D65 */
+export function hclHex(h, c, l) {
+  const rad = (h * Math.PI) / 180;
+  const u = c * Math.cos(rad), v = c * Math.sin(rad);
+  const Xn = 95.047, Yn = 100.0, Zn = 108.883;
+  const un = (4 * Xn) / (Xn + 15 * Yn + 3 * Zn), vn = (9 * Yn) / (Xn + 15 * Yn + 3 * Zn);
+  const Y = l > 8 ? Yn * ((l + 16) / 116) ** 3 : Yn * l / 903.2963;
+  const up = u / (13 * l) + un, vp = v / (13 * l) + vn;
+  const X = (Y * 9 * up) / (4 * vp), Z = (Y * (12 - 3 * up - 20 * vp)) / (4 * vp);
+  const lin = [3.240479 * X - 1.53715 * Y - 0.498535 * Z, -0.969256 * X + 1.875992 * Y + 0.041556 * Z,
+               0.055648 * X - 0.204043 * Y + 1.057311 * Z].map((x) => x / 100);
+  const gam = (x) => (x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055);
+  return '#' + lin.map((x) => Math.round(255 * Math.min(1, Math.max(0, gam(x)))).toString(16).padStart(2, '0')).join('');
+}
+/** ggplot2's default discrete scale: n hues evenly around the wheel from `start` (C 100, L 65) */
+export const ggHue = (n, start = 15) => Array.from({ length: n }, (_, i) => hclHex((start + (360 * i) / n) % 360, 100, 65));
+export const CAT_PRESETS = {
+  theme: { label: 'Theme colours', note: 'tuned per theme, checked for colour-blind separation' },
+  gghue: { label: 'ggplot2 hue', note: '8 hues from 285°, C 100, L 65', colors: () => ggHue(8, 285) },
+};
+
 let zoneSettings = {};
 /** Write the palette into --z0 … --z5 so every zone visual picks it up. */
 export function applyZonePalette(s = zoneSettings) {
@@ -453,6 +476,11 @@ export function applyZonePalette(s = zoneSettings) {
   const root = document.documentElement;
   for (let i = 0; i < 6; i++) root.style.removeProperty(`--z${i}`);   // read the theme's surface first
   zonePaletteColors(s).forEach((c, i) => root.style.setProperty(`--z${i}`, c));
+  const cat = CAT_PRESETS[s.catPalette]?.colors?.();
+  for (let i = 0; i < 8; i++) {
+    if (cat) root.style.setProperty(`--s${i + 1}`, cat[i]);
+    else root.style.removeProperty(`--s${i + 1}`);
+  }
 }
 window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyZonePalette());
 
