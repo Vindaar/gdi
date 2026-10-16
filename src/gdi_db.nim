@@ -73,6 +73,22 @@ CREATE TABLE IF NOT EXISTS activities (
   te_label         TEXT,
   avg_temp         REAL,              -- device sensor
   steps            INTEGER,
+  avg_gct          REAL,              -- running dynamics (Garmin summary)
+  avg_vo           REAL,
+  avg_vr           REAL,
+  avg_gcb          REAL,
+  avg_resp         REAL,              -- breaths/min
+  max_resp         REAL,
+  stamina_begin    REAL,              -- potential stamina, %
+  stamina_end      REAL,
+  stamina_min      REAL,              -- lowest available stamina, %
+  bb_delta         REAL,              -- Body Battery change
+  impact_load      REAL,
+  recovery_hr      REAL,              -- Garmin's recovery heart rate
+  step_speed_loss  REAL,              -- %
+  intensity_min    REAL,              -- moderate + 2 × vigorous minutes
+  perf_cond_first  REAL,              -- performance condition: first / last value
+  perf_cond_last   REAL,
   w_temp           REAL,              -- weather at start
   w_apparent_temp  REAL,
   w_dew_point      REAL,
@@ -149,6 +165,16 @@ CREATE TABLE IF NOT EXISTS segments (     -- consecutive 1 km chunks
   ascent      REAL,
   descent     REAL,
   grade       REAL,                   -- net %, end vs start elevation
+  max_hr      REAL,
+  avg_stride  REAL,                   -- cm
+  avg_gct     REAL,                   -- ground contact time, ms
+  avg_vo      REAL,                   -- vertical oscillation, cm
+  avg_vr      REAL,                   -- vertical ratio, %
+  avg_gcb     REAL,                   -- ground contact balance (left), %
+  avg_resp    REAL,                   -- respiration, breaths/min
+  avg_temp    REAL,                   -- device temperature sensor, °C
+  stamina     REAL,                   -- available stamina at the segment end, %
+  perf_cond   REAL,                   -- mean performance condition
   PRIMARY KEY (activity_id, idx)
 );
 CREATE TABLE IF NOT EXISTS mmp (          -- mean-maximal values by duration
@@ -279,9 +305,22 @@ proc openDb*(path: string): DbConn =
   for r in result.rows(sql"PRAGMA table_info(activities)"): cols.add r[1]
   for (col, typ) in [("gap_source", "TEXT"), ("decoupling", "REAL"),
                      ("decoupling_steady", "INTEGER"), ("pace_cv", "REAL"),
-                     ("dq_flags", "TEXT"), ("rpe", "REAL"), ("feel", "REAL")]:
+                     ("dq_flags", "TEXT"), ("rpe", "REAL"), ("feel", "REAL"),
+                     ("avg_gct", "REAL"), ("avg_vo", "REAL"), ("avg_vr", "REAL"),
+                     ("avg_gcb", "REAL"), ("avg_resp", "REAL"), ("max_resp", "REAL"),
+                     ("stamina_begin", "REAL"), ("stamina_end", "REAL"), ("stamina_min", "REAL"),
+                     ("bb_delta", "REAL"), ("impact_load", "REAL"), ("recovery_hr", "REAL"),
+                     ("step_speed_loss", "REAL"), ("intensity_min", "REAL"),
+                     ("perf_cond_first", "REAL"), ("perf_cond_last", "REAL")]:
     if col notin cols:
       result.exec(sql("ALTER TABLE activities ADD COLUMN " & col & " " & typ))
+  # segments are derived (filled by the importer): recreate on layout change
+  var scols: seq[string]
+  for r in result.rows(sql"PRAGMA table_info(segments)"): scols.add r[1]
+  if "perf_cond" notin scols:
+    result.exec(sql"DROP TABLE IF EXISTS segments")
+    for stmt in Schema.split(';'):
+      if "TABLE IF NOT EXISTS segments" in stmt: result.exec(sql(stmt))
   # notes tables are derived from the diary file: recreate on layout change
   var ncols: seq[string]
   for r in result.rows(sql"PRAGMA table_info(activity_notes)"): ncols.add r[1]

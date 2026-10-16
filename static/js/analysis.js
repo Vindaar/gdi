@@ -9,46 +9,104 @@ import {
 } from './util.js';
 
 // `unit` decides whether two metrics can share one Y axis.
+const ms2kmh = (v) => (v != null ? v * 3.6 : null);
+const ACTIVITY_METRICS = {
+  pace:   { label: 'Avg pace', get: (r) => r.avg_moving_speed, pace: true, unit: 'pace' },
+  gap:    { label: 'Avg grade-adjusted pace', get: (r) => r.avg_gap_speed, pace: true, unit: 'pace' },
+  maxspd: { label: 'Best pace (max speed)', get: (r) => r.max_speed, pace: true, unit: 'pace' },
+  hr:     { label: 'Avg heart rate (bpm)', get: (r) => r.avg_hr, unit: 'bpm' },
+  maxhr:  { label: 'Max heart rate (bpm)', get: (r) => r.max_hr, unit: 'bpm' },
+  minhr:  { label: 'Min heart rate (bpm)', get: (r) => r.min_hr, unit: 'bpm' },
+  hrr60:  { label: 'HR recovery, best 60 s drop (bpm)', get: (r) => r.hrr60, unit: 'Δbpm' },
+  hrr120: { label: 'HR recovery, best 120 s drop (bpm)', get: (r) => r.hrr120, unit: 'Δbpm' },
+  rechr:  { label: 'Recovery heart rate, Garmin (bpm)', get: (r) => r.recovery_hr, unit: 'bpm' },
+  eff:    { label: 'Efficiency (m per heartbeat)', get: (r) => (r.avg_hr ? (r.avg_gap_speed || r.avg_moving_speed) * 60 / r.avg_hr : null), unit: 'm/beat' },
+  dist:   { label: 'Distance (km)', get: (r) => (r.distance ? r.distance / 1000 : null), unit: 'km' },
+  dur:    { label: 'Moving time (min)', get: (r) => (r.moving_duration ? r.moving_duration / 60 : null), unit: 'min' },
+  elapsed:{ label: 'Elapsed time (min)', get: (r) => (r.elapsed_duration ? r.elapsed_duration / 60 : null), unit: 'min' },
+  ascent: { label: 'Ascent (m)', get: (r) => r.elev_gain, unit: 'm' },
+  descent:{ label: 'Descent (m)', get: (r) => r.elev_loss, unit: 'm' },
+  apk:    { label: 'Ascent per km (m)', get: (r) => r.ascent_per_km, unit: 'm/km' },
+  minel:  { label: 'Min elevation (m)', get: (r) => r.min_elev, unit: 'm elev' },
+  maxel:  { label: 'Max elevation (m)', get: (r) => r.max_elev, unit: 'm elev' },
+  cad:    { label: 'Cadence', get: (r) => r.avg_cadence, unit: 'spm' },
+  maxcad: { label: 'Max cadence', get: (r) => r.max_cadence, unit: 'spm' },
+  stride: { label: 'Stride length (cm)', get: (r) => r.avg_stride, unit: 'cm' },
+  gct:    { label: 'Ground contact time (ms)', get: (r) => r.avg_gct, unit: 'ms' },
+  vo:     { label: 'Vertical oscillation (cm)', get: (r) => r.avg_vo, unit: 'cm vo' },
+  vr:     { label: 'Vertical ratio (%)', get: (r) => r.avg_vr, unit: '% vr' },
+  gcb:    { label: 'GCT balance, left (%)', get: (r) => r.avg_gcb, unit: '% gcb' },
+  ssl:    { label: 'Step speed loss (%)', get: (r) => r.step_speed_loss, unit: '% ssl' },
+  steps:  { label: 'Steps', get: (r) => r.steps, unit: 'steps', int: true },
+  power:  { label: 'Power (W)', get: (r) => r.avg_power, unit: 'W' },
+  maxpow: { label: 'Max power (W)', get: (r) => r.max_power, unit: 'W' },
+  np:     { label: 'Normalized power (W)', get: (r) => r.norm_power, unit: 'W' },
+  resp:   { label: 'Respiration (brpm)', get: (r) => r.avg_resp, unit: 'brpm' },
+  maxresp:{ label: 'Max respiration (brpm)', get: (r) => r.max_resp, unit: 'brpm' },
+  load:   { label: 'Training load', get: (r) => r.training_load, unit: 'load' },
+  te:     { label: 'Aerobic TE', get: (r) => r.aerobic_te, unit: 'te' },
+  ante:   { label: 'Anaerobic TE', get: (r) => r.anaerobic_te, unit: 'te' },
+  impact: { label: 'Impact load', get: (r) => r.impact_load, unit: 'impact' },
+  imin:   { label: 'Intensity minutes (moderate + 2 × vigorous)', get: (r) => r.intensity_min, unit: 'imin' },
+  cal:    { label: 'Calories (kcal)', get: (r) => r.calories, unit: 'kcal' },
+  stamb:  { label: 'Potential stamina at start (%)', get: (r) => r.stamina_begin, unit: '% stamina' },
+  stame:  { label: 'Potential stamina at end (%)', get: (r) => r.stamina_end, unit: '% stamina' },
+  stamm:  { label: 'Lowest available stamina (%)', get: (r) => r.stamina_min, unit: '% stamina' },
+  pcf:    { label: 'Performance condition, first value', get: (r) => r.perf_cond_first, unit: 'pc' },
+  pcl:    { label: 'Performance condition, last value', get: (r) => r.perf_cond_last, unit: 'pc' },
+  bb:     { label: 'Body Battery change', get: (r) => r.bb_delta, unit: 'bb' },
+  rpe:    { label: 'Perceived effort (RPE 1–10)', get: (r) => r.rpe, unit: 'rpe', int: true },
+  feel:   { label: 'Feel (0 very weak … 100 very strong)', get: (r) => r.feel, unit: 'feel', int: true },
+  temp:   { label: 'Temperature, weather (°C)', get: (r) => r.w_temp, unit: '°C' },
+  atemp:  { label: 'Apparent temperature (°C)', get: (r) => r.w_apparent_temp, unit: '°C' },
+  devtemp:{ label: 'Temperature, watch sensor (°C)', get: (r) => r.avg_temp, unit: '°C' },
+  dew:    { label: 'Dew point (°C)', get: (r) => r.w_dew_point, unit: '°C' },
+  hum:    { label: 'Humidity (%)', get: (r) => r.w_humidity, unit: '% hum' },
+  wind:   { label: 'Wind (km/h)', get: (r) => ms2kmh(r.w_wind_speed), unit: 'km/h' },
+  gust:   { label: 'Wind gusts (km/h)', get: (r) => ms2kmh(r.w_wind_gust), unit: 'km/h' },
+  expd:   { label: 'Vs expected pace (s/km, − = faster)', get: (r) => r.exp_delta, unit: 's/km' },
+  dec:    { label: 'Aerobic decoupling (%)', get: (r) => r.decoupling, unit: '% dec' },
+  decst:  { label: 'Aerobic decoupling, steady runs only (%)', get: (r) => (r.decoupling_steady ? r.decoupling : null), unit: '% dec' },
+  pacecv: { label: 'Pace variability (CV of 1-min GAP, %)', get: (r) => (r.pace_cv != null ? r.pace_cv * 100 : null), unit: '% cv' },
+  fit:    { label: 'Fitness: pace at 140 bpm', get: (r) => (r.ref_pace ? 1000 / r.ref_pace : null), pace: true, unit: 'pace' },
+  hour:   { label: 'Start time (hour of day)', get: (r) => +r.start_local.slice(11, 13) + +r.start_local.slice(14, 16) / 60, unit: 'hour' },
+  year:   { label: 'Year', get: (r) => +r.start_local.slice(0, 4), unit: 'year', int: true },
+  date:   { label: 'Date', get: (r) => Date.parse(r.start_local), date: true, unit: 'date' },
+};
+let actById = new Map();   // activity id → activity row (for activity metrics per segment)
 const METRICS = {
   segments: {
     pace:   { label: 'Pace', get: (r) => r.avg_speed, pace: true, unit: 'pace' },
     gap:    { label: 'Grade-adjusted pace', get: (r) => r.avg_gap, pace: true, unit: 'pace' },
     hr:     { label: 'Heart rate (bpm)', get: (r) => r.avg_hr, unit: 'bpm' },
+    maxhr:  { label: 'Max heart rate in km (bpm)', get: (r) => r.max_hr, unit: 'bpm' },
     eff:    { label: 'Efficiency (m per heartbeat)', get: (r) => (r.avg_hr ? (r.avg_gap || r.avg_speed) * 60 / r.avg_hr : null), unit: 'm/beat' },
     grade:  { label: 'Grade (%)', get: (r) => r.grade, unit: '%' },
     ascent: { label: 'Ascent in km (m)', get: (r) => r.ascent, unit: 'm' },
+    descent:{ label: 'Descent in km (m)', get: (r) => r.descent, unit: 'm' },
     cad:    { label: 'Cadence (spm)', get: (r) => r.avg_cadence, unit: 'spm' },
+    stride: { label: 'Stride length (cm)', get: (r) => r.avg_stride, unit: 'cm' },
+    gct:    { label: 'Ground contact time (ms)', get: (r) => r.avg_gct, unit: 'ms' },
+    vo:     { label: 'Vertical oscillation (cm)', get: (r) => r.avg_vo, unit: 'cm vo' },
+    vr:     { label: 'Vertical ratio (%)', get: (r) => r.avg_vr, unit: '% vr' },
+    gcb:    { label: 'GCT balance, left (%)', get: (r) => r.avg_gcb, unit: '% gcb' },
     power:  { label: 'Power (W)', get: (r) => r.avg_power, unit: 'W' },
-    temp:   { label: 'Temperature (°C)', get: (r) => r.w_temp, unit: '°C' },
+    resp:   { label: 'Respiration (brpm)', get: (r) => r.avg_resp, unit: 'brpm' },
+    stamina:{ label: 'Available stamina at km end (%)', get: (r) => r.stamina, unit: '% stamina' },
+    perf:   { label: 'Performance condition', get: (r) => r.perf_cond, unit: 'pc' },
+    devtemp:{ label: 'Temperature, watch sensor (°C)', get: (r) => r.avg_temp, unit: '°C' },
     km:     { label: 'Km into activity', get: (r) => r.idx + 1, unit: 'km' },
+    tmin:   { label: 'Minutes into activity (at km start)', get: (r) => (r.start_t != null ? r.start_t / 60 : null), unit: 'min' },
     year:   { label: 'Year', get: (r) => +r.start_local.slice(0, 4), unit: 'year', int: true },
     date:   { label: 'Date', get: (r) => Date.parse(r.start_local), date: true, unit: 'date' },
   },
-  activities: {
-    pace:   { label: 'Avg pace', get: (r) => r.avg_moving_speed, pace: true, unit: 'pace' },
-    gap:    { label: 'Avg grade-adjusted pace', get: (r) => r.avg_gap_speed, pace: true, unit: 'pace' },
-    hr:     { label: 'Avg heart rate (bpm)', get: (r) => r.avg_hr, unit: 'bpm' },
-    maxhr:  { label: 'Max heart rate (bpm)', get: (r) => r.max_hr, unit: 'bpm' },
-    eff:    { label: 'Efficiency (m per heartbeat)', get: (r) => (r.avg_hr ? (r.avg_gap_speed || r.avg_moving_speed) * 60 / r.avg_hr : null), unit: 'm/beat' },
-    apk:    { label: 'Ascent per km (m)', get: (r) => r.ascent_per_km, unit: 'm/km' },
-    dist:   { label: 'Distance (km)', get: (r) => (r.distance ? r.distance / 1000 : null), unit: 'km' },
-    dur:    { label: 'Moving time (min)', get: (r) => (r.moving_duration ? r.moving_duration / 60 : null), unit: 'min' },
-    cad:    { label: 'Cadence', get: (r) => r.avg_cadence, unit: 'spm' },
-    power:  { label: 'Power (W)', get: (r) => r.avg_power, unit: 'W' },
-    load:   { label: 'Training load', get: (r) => r.training_load, unit: 'load' },
-    te:     { label: 'Aerobic TE', get: (r) => r.aerobic_te, unit: 'te' },
-    rpe:    { label: 'Perceived effort (RPE 1–10)', get: (r) => r.rpe, unit: 'rpe', int: true },
-    feel:   { label: 'Feel (0 very weak … 100 very strong)', get: (r) => r.feel, unit: 'feel', int: true },
-    temp:   { label: 'Temperature (°C)', get: (r) => r.w_temp, unit: '°C' },
-    hum:    { label: 'Humidity (%)', get: (r) => r.w_humidity, unit: '%' },
-    expd:   { label: 'Vs expected pace (s/km, − = faster)', get: (r) => r.exp_delta, unit: 's/km' },
-    dec:    { label: 'Aerobic decoupling (%)', get: (r) => r.decoupling, unit: '%' },
-    decst:  { label: 'Aerobic decoupling, steady runs only (%)', get: (r) => (r.decoupling_steady ? r.decoupling : null), unit: '%' },
-    fit:    { label: 'Fitness: pace at 140 bpm', get: (r) => (r.ref_pace ? 1000 / r.ref_pace : null), pace: true, unit: 'pace' },
-    year:   { label: 'Year', get: (r) => +r.start_local.slice(0, 4), unit: 'year', int: true },
-    date:   { label: 'Date', get: (r) => Date.parse(r.start_local), date: true, unit: 'date' },
-  },
+  activities: ACTIVITY_METRICS,
 };
+// every activity metric is also available per segment (value of its activity)
+for (const [k, m] of Object.entries(ACTIVITY_METRICS)) {
+  if (['year', 'date'].includes(k)) continue;
+  METRICS.segments[`a_${k}`] = { ...m, label: `Activity: ${m.label}`, get: (r) => { const a = actById.get(r.activity_id); return a ? m.get(a) : null; } };
+}
 
 // Per-second samples (time-weighted), from the stored HR / speed histograms.
 METRICS.samples = {
@@ -57,10 +115,12 @@ METRICS.samples = {
   gap:  { label: 'Grade-adjusted pace', unit: 'pace', kind: 'gap', pace: true },
 };
 
+const GROUPS = [['none', 'nothing'], ['year', 'year'], ['type', 'activity type'], ['gear', 'gear'], ['temp', 'temperature band']];
+
 const state = remember('analysis', {
   level: 'segments', family: 'running', type: '', x: 'hr', y: 'pace', y2: '', color: '', group: 'year',
   from: '', to: '', gradeMin: '', gradeMax: '', apkMax: '', tempMin: '', tempMax: '',
-  hrMin: '', hrMax: '', minKm: '', tag: '', trend: true,
+  hrMin: '', hrMax: '', minKm: '', skipKm: '', tag: '', trend: true,
   mode: 'scatter', weight: 'count', bins: 40, norm: false,
 });
 
@@ -127,8 +187,13 @@ export async function analysisPage(app) {
     if (s.level === 'samples' && s.mode !== 'hist') state.set({ level: 'segments' });
     const acts = objects(await api('activities'));
     tagsOf = new Map(acts.map((r) => [r.id, parseTags(r.tags)]));
+    actById = new Map(acts.map((r) => [r.id, r]));
     if (state.get().level === 'segments') {
       data = objects(await api(`segments?family=${s.family}`));
+      // distance of each segment's start from the activity start
+      const first = new Map();
+      for (const r of data) if (!first.has(r.activity_id) || r.start_dist < first.get(r.activity_id)) first.set(r.activity_id, r.start_dist);
+      for (const r of data) r.from_start = r.start_dist - first.get(r.activity_id);
     } else {
       data = acts.filter((r) => s.family === 'all' || r.parent_type === s.family);
     }
@@ -144,12 +209,22 @@ export async function analysisPage(app) {
     for (const k of ['x', 'y']) if (!M[s[k]]) state.set({ [k]: k === 'x' ? 'hr' : 'pace' });
     for (const k of ['y2', 'color']) if (s[k] && !M[s[k]]) state.set({ [k]: '' });
     const sel = (key, opts, val, onchange) => {
-      const el = h('select', {}, opts.map(([v, l]) => h('option', { value: v, selected: v === val }, l)));
+      // options [value, label, group?]: consecutive options of one group share an <optgroup>
+      const kids = [];
+      for (const [v, l, g] of opts) {
+        const o = h('option', { value: v, selected: v === val }, l);
+        if (!g) { kids.push(o); continue; }
+        let last = kids[kids.length - 1];
+        if (!(last?.tagName === 'OPTGROUP' && last.label === g)) kids.push(last = h('optgroup', { label: g }));
+        last.append(o);
+      }
+      const el = h('select', {}, kids);
       el.addEventListener('change', () => { state.set({ [key]: el.value }); onchange(); });
       return el;
     };
     const types = [...new Set(data.map((r) => r.type_key))].sort();
-    const metricOpts = Object.entries(M).map(([k, m]) => [k, m.label]);
+    const metricOpts = Object.entries(M).map(([k, m]) =>
+      s.level !== 'segments' ? [k, m.label] : k.startsWith('a_') ? [k, m.label.replace(/^Activity: /, ''), 'Whole activity'] : [k, m.label, 'This km']);
     const st = state.get();
     const modeSel = h('label', {}, 'Chart', segmented([['scatter', 'Scatter'], ['hist', 'Histogram']], st.mode, (v) => {
       state.set({ mode: v });
@@ -172,7 +247,7 @@ export async function analysisPage(app) {
         h('label', {}, 'Show', segmented([[false, 'totals'], [true, '% within group']], st.norm, (v) => { state.set({ norm: v }); draw(); })),
       ].filter(Boolean));
       controls2.replaceChildren(
-        h('label', {}, 'Group by', sel('group', [['none', 'nothing'], ['year', 'year'], ['type', 'activity type'], ['temp', 'temperature band']], st.group, draw)));
+        h('label', {}, 'Group by', sel('group', GROUPS, st.group, draw)));
       buildFilters(st, sel, types);
       return;
     }
@@ -185,7 +260,7 @@ export async function analysisPage(app) {
       h('label', {}, 'Second Y', sel('y2', [['', '—'], ...metricOpts], st.y2, () => { buildControls(); draw(); })),
       h('label', {}, 'Colour by', sel('color', [['', 'group (below)'], ...metricOpts], st.color, () => { buildControls(); draw(); })),
     );
-    const groupSel = sel('group', [['none', 'nothing'], ['year', 'year'], ['type', 'activity type'], ['temp', 'temperature band']], st.group, draw);
+    const groupSel = sel('group', GROUPS, st.group, draw);
     const overlay = st.y2 && st.y2 !== st.y && M[st.y2].unit === M[st.y].unit;
     const groupBlocked = st.color ? 'Colour already encodes a metric'
       : overlay ? 'Colour distinguishes the two overlaid metrics' : null;
@@ -215,6 +290,8 @@ export async function analysisPage(app) {
     filters.replaceChildren(...[
       h('label', {}, 'Type', sel('type', [['', 'any'], ...types.map((t) => [t, TYPE_LABEL(t)])], st.type, draw)),
       h('label', {}, 'From', date('from')), h('label', {}, 'To', date('to')),
+      st.level === 'segments' ? h('label', { title: 'Drop segments that start before this distance into the activity — e.g. 2 to leave out the warm-up, where heart rate still lags behind the effort.' },
+        'Skip segments before km', inp('skipKm', 'km', '0.5')) : null,
       st.level === 'segments' ? h('label', {}, 'Segment grade %', h('span', {}, inp('gradeMin', 'min', '0.5'), ' – ', inp('gradeMax', 'max', '0.5'))) : null,
       h('label', {}, 'Activity ascent/km ≤', inp('apkMax', 'm/km')),
       h('label', {}, 'Temp °C', h('span', {}, inp('tempMin', 'min'), ' – ', inp('tempMax', 'max'))),
@@ -238,6 +315,7 @@ export async function analysisPage(app) {
       (!s.type || r.type_key === s.type) &&
       (!s.from || r.start_local >= s.from) &&
       (!s.to || r.start_local.slice(0, 10) <= s.to) &&
+      (!seg || num(s.skipKm) == null || r.from_start >= num(s.skipKm) * 1000 - 1) &&
       (!seg || num(s.gradeMin) == null || (r.grade != null && r.grade >= num(s.gradeMin))) &&
       (!seg || num(s.gradeMax) == null || (r.grade != null && r.grade <= num(s.gradeMax))) &&
       (num(s.apkMax) == null || (r.ascent_per_km != null && r.ascent_per_km <= num(s.apkMax))) &&
@@ -287,9 +365,10 @@ export async function analysisPage(app) {
     const groupOf = (p) => {
       const iso = p[5];
       if (s.group === 'year') return iso.slice(0, 4);
-      if (s.group === 'type' || s.group === 'temp') {
+      if (s.group === 'type' || s.group === 'temp' || s.group === 'gear') {
         const r = rowById.get(p[3] + ':' + (p[6] ?? ''));
         if (s.group === 'type') return TYPE_LABEL(r?.type_key);
+        if (s.group === 'gear') return actById.get(p[3])?.gear || 'no gear';
         if (r?.w_temp == null) return 'unknown';
         const b = Math.floor(r.w_temp / 5) * 5;
         return `${b}–${b + 5} °C`;
@@ -507,6 +586,7 @@ export async function analysisPage(app) {
   function groupOfRow(r, group) {
     if (group === 'year') return r.start_local.slice(0, 4);
     if (group === 'type') return TYPE_LABEL(r.type_key);
+    if (group === 'gear') return actById.get(r.activity_id ?? r.id)?.gear || 'no gear';
     if (group === 'temp') {
       if (r.w_temp == null) return 'unknown';
       const b = Math.floor(r.w_temp / 5) * 5;

@@ -9,7 +9,7 @@ import std / [os, json, math, strutils, strformat, times, tables, algorithm, set
 import gdi_db, gdi_models, gdi_metrics, gdi_notes
 
 const
-  ImporterVersion* = "15"
+  ImporterVersion* = "16"
     ## Bump whenever derived data changes; forces a full re-import.
   BestEffortDistances* = [400.0, 1000.0, 1609.344, 3000.0, 5000.0, 10000.0,
                           15000.0, 20000.0, 21097.5, 30000.0, 40000.0, 42195.0,
@@ -282,6 +282,14 @@ proc bestEfforts*(t, distRaw, hr, elev: seq[float],
     if best.time < Inf:
       result.add best
 
+proc firstLast(xs: seq[float]): (float, float) =
+  ## first and last non-NaN value
+  result = (NaN, NaN)
+  for x in xs:
+    if not x.isNaN: result[0] = x; break
+  for i in countdown(xs.high, 0):
+    if not xs[i].isNaN: result[1] = xs[i]; break
+
 proc weightedMean(xs, w: seq[float]): float =
   var s, ws = 0.0
   for i in 0 ..< min(xs.len, w.len):
@@ -294,6 +302,13 @@ type Segment* = object
   idx*: int
   startDist*, length*, time*, startT*: float
   avgSpeed*, avgGap*, avgHr*, avgCadence*, avgPower*, ascent*, descent*, grade*: float
+  maxHr*, stamina*: float
+  avgStride*, avgGct*, avgVo*, avgVr*, avgGcb*, avgResp*, avgTemp*, perfCond*: float
+
+const SegChannels = ["directGradeAdjustedSpeed", "directHeartRate", "directDoubleCadence",
+  "directPower", "directStrideLength", "directGroundContactTime",
+  "directVerticalOscillation", "directVerticalRatio", "directGroundContactBalanceLeft",
+  "directRespirationRate", "directAirTemperature", "directPerformanceCondition"]
 
 proc segments*(st: Streams, wts: seq[float], segLen: float): seq[Segment] =
   ## Consecutive `segLen` metre chunks (last partial chunk dropped). Averages
@@ -306,19 +321,23 @@ proc segments*(st: Streams, wts: seq[float], segLen: float): seq[Segment] =
   if d[0].isNaN: return
   for i in 1 ..< n: d[i] = max(d[i], d[i-1])
   let el = forwardFilled(st.get("directElevation"))
-  let chans = [st.get("directGradeAdjustedSpeed"), st.get("directHeartRate"),
-               st.get("directDoubleCadence"), st.get("directPower")]
-  var cur = Segment(idx: 0, startDist: d[0], startT: t[0])
-  var sums: array[4, float]
-  var ws: array[4, float]
+  var chans: array[SegChannels.len, seq[float]]
+  for c, k in SegChannels: chans[c] = st.get(k)
+  if chans[2].len != n: chans[2] = st.get("directBikeCadence")
+  let hr = chans[1]
+  let stam = st.get("directAvailableStamina")
+  var cur = Segment(idx: 0, startDist: d[0], startT: t[0], maxHr: NaN, stamina: NaN)
+  var sums, ws: array[SegChannels.len, float]
   var moving = 0.0
   var startEl = (if el.len == n: el[0] else: NaN)
   for i in 0 ..< n - 1:
     let w = wts[i]
     moving += w
-    for c in 0 ..< 4:
+    for c in 0 ..< SegChannels.len:
       if chans[c].len == n and not chans[c][i].isNaN and w > 0:
         sums[c] += chans[c][i] * w; ws[c] += w
+    if hr.len == n and not hr[i].isNaN and (cur.maxHr.isNaN or hr[i] > cur.maxHr): cur.maxHr = hr[i]
+    if stam.len == n and not stam[i].isNaN: cur.stamina = stam[i]
     if el.len == n and not el[i].isNaN and not el[i+1].isNaN:
       let dz = el[i+1] - el[i]
       if dz > 0: cur.ascent += dz else: cur.descent -= dz
@@ -329,11 +348,13 @@ proc segments*(st: Streams, wts: seq[float], segLen: float): seq[Segment] =
       template avg(c: int): float = (if ws[c] > 0: sums[c] / ws[c] else: NaN)
       cur.avgGap = avg(0); cur.avgHr = avg(1)
       cur.avgCadence = avg(2); cur.avgPower = avg(3)
+      cur.avgStride = avg(4); cur.avgGct = avg(5); cur.avgVo = avg(6); cur.avgVr = avg(7)
+      cur.avgGcb = avg(8); cur.avgResp = avg(9); cur.avgTemp = avg(10); cur.perfCond = avg(11)
       cur.grade = (if el.len == n and not startEl.isNaN and not el[i+1].isNaN:
                      (el[i+1] - startEl) / cur.length * 100 else: NaN)
       if moving > 0: result.add cur
-      cur = Segment(idx: cur.idx + 1, startDist: d[i+1], startT: t[i+1])
-      sums = default(array[4, float]); ws = default(array[4, float])
+      cur = Segment(idx: cur.idx + 1, startDist: d[i+1], startT: t[i+1], maxHr: NaN, stamina: NaN)
+      sums = default(array[SegChannels.len, float]); ws = default(array[SegChannels.len, float])
       moving = 0.0
       startEl = (if el.len == n: el[i+1] else: NaN)
 
@@ -799,6 +820,26 @@ proc importActivity*(db: DbConn, j: JsonNode) =
     ("te_label", js s.str("trainingEffectLabel")),
     ("avg_temp", jf s.num("averageTemperature")),
     ("steps", jf s.num("steps")),
+    ("avg_gct", jf s.num("groundContactTime")),
+    ("avg_vo", jf s.num("verticalOscillation")),
+    ("avg_vr", jf s.num("verticalRatio")),
+    ("avg_gcb", jf s.num("groundContactBalanceLeft")),
+    ("avg_resp", jf s.num("avgRespirationRate")),
+    ("max_resp", jf s.num("maxRespirationRate")),
+    ("stamina_begin", jf s.num("beginPotentialStamina")),
+    ("stamina_end", jf s.num("endPotentialStamina")),
+    ("stamina_min", jf s.num("minAvailableStamina")),
+    ("bb_delta", jf s.num("differenceBodyBattery")),
+    ("impact_load", jf s.num("impactLoad")),
+    ("recovery_hr", jf s.num("recoveryHeartRate")),
+    ("step_speed_loss", jf s.num("stepSpeedLossPercent")),
+    ("intensity_min", jf(block:
+      let m = s.num("moderateIntensityMinutes")
+      let v = s.num("vigorousIntensityMinutes")
+      if m.isNaN and v.isNaN: NaN
+      else: (if m.isNaN: 0.0 else: m) + 2 * (if v.isNaN: 0.0 else: v))),
+    ("perf_cond_first", jf firstLast(st.get("directPerformanceCondition"))[0]),
+    ("perf_cond_last", jf firstLast(st.get("directPerformanceCondition"))[1]),
     ("w_temp", jf fToC(w.num("temp"))),
     ("w_apparent_temp", jf fToC(w.num("apparentTemp"))),
     ("w_dew_point", jf fToC(w.num("dewPoint"))),
@@ -888,7 +929,11 @@ proc importActivity*(db: DbConn, j: JsonNode) =
       ("avg_speed", jf sg.avgSpeed), ("avg_gap", jf sg.avgGap),
       ("avg_hr", jf sg.avgHr), ("avg_cadence", jf sg.avgCadence),
       ("avg_power", jf sg.avgPower), ("ascent", jf sg.ascent),
-      ("descent", jf sg.descent), ("grade", jf sg.grade)])
+      ("descent", jf sg.descent), ("grade", jf sg.grade),
+      ("max_hr", jf sg.maxHr), ("avg_stride", jf sg.avgStride), ("avg_gct", jf sg.avgGct),
+      ("avg_vo", jf sg.avgVo), ("avg_vr", jf sg.avgVr), ("avg_gcb", jf sg.avgGcb),
+      ("avg_resp", jf sg.avgResp), ("avg_temp", jf sg.avgTemp),
+      ("stamina", jf sg.stamina), ("perf_cond", jf sg.perfCond)])
 
   # mean-maximal speed (from cleaned distance), GAP speed and power by duration
   block:
