@@ -104,7 +104,20 @@ export async function settingsPage(app) {
   const seqCard = h('div', { class: 'card', style: 'margin-top:16px' },
     h('h2', {}, 'Continuous colour scale'),
     h('p', { class: 'sub' }, 'Used for colour-by-metric and ordered groups (years, temperature bands) on the Analysis page. Low values take the left end, high values the right end; the end that would disappear into the background is trimmed per light/dark theme.'),
-    seqBox, h('div', { style: 'margin-top:8px' }, seqMsg));
+    seqBox,
+    (() => {
+      // ordered groups: continuous scale, or discrete series colours when few
+      const cur = +s.orderedDiscreteMax || 0;
+      const opts = [[0, 'always the continuous scale'], ...[2, 3, 4, 5, 6, 8].map((n) => [n, `series colours up to ${n} groups, continuous above`])];
+      const el = h('select', {}, opts.map(([v, l]) => h('option', { value: v, selected: v === cur }, l)));
+      el.addEventListener('change', async () => {
+        s.orderedDiscreteMax = +el.value; applyZonePalette({ ...s });
+        await postJson('settings', { orderedDiscreteMax: +el.value }); seqMsg.textContent = 'Saved.';
+      });
+      return h('div', { class: 'filters', style: 'margin-top:12px' },
+        h('label', {}, 'Ordered groups in Analysis (years, temperature bands)', el));
+    })(),
+    h('div', { style: 'margin-top:8px' }, seqMsg));
 
   // ── page theme (per browser) ──
   const themeBox = h('div', { class: 'theme-list' });

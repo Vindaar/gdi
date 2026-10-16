@@ -483,6 +483,8 @@ export const CAT_PRESETS = {
 };
 
 let zoneSettings = {};
+/** the server-side UI settings (zones, palettes) as last applied */
+export const uiSettings = () => zoneSettings;
 /** Write the palette into --z0 … --z5 so every zone visual picks it up. */
 export function applyZonePalette(s = zoneSettings) {
   zoneSettings = s;

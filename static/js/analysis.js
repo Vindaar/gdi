@@ -5,7 +5,7 @@
 import {
   api, postJson, objects, dataTable, fmtKm, h, fmtDur, fmtDate, TYPE_LABEL, FAMILIES, remember, echart,
   chartTheme, baseAxis, baseTooltip, series, segmented, seqRamp,
-  parseTags,
+  parseTags, uiSettings,
 } from './util.js';
 
 // `unit` decides whether two metrics can share one Y axis.
@@ -117,12 +117,16 @@ METRICS.samples = {
 
 const GROUPS = [['none', 'nothing'], ['year', 'year'], ['type', 'activity type'], ['gear', 'gear'], ['temp', 'temperature band']];
 
-const state = remember('analysis', {
+const DEFAULTS = {
   level: 'segments', family: 'running', type: '', x: 'hr', y: 'pace', y2: '', color: '', group: 'year',
   from: '', to: '', gradeMin: '', gradeMax: '', apkMax: '', tempMin: '', tempMax: '',
   hrMin: '', hrMax: '', minKm: '', skipKm: '', tag: '', trend: true,
   mode: 'scatter', weight: 'count', bins: 40, norm: false,
-});
+};
+const state = remember('analysis', DEFAULTS);
+/** ordered groups (year, temperature band) use the continuous scale unless
+ *  there are at most `orderedDiscreteMax` of them (Settings) */
+const continuousFor = (ordered, n) => ordered && n > (+uiSettings().orderedDiscreteMax || 0);
 
 /** plotted value: pace metrics as seconds per km, everything else as-is */
 function val(m, r) {
@@ -401,7 +405,7 @@ export async function analysisPage(app) {
     };
     const groupColor = (i) => {
       if (!useGroups) return null;
-      if (!ordered) return nominalColor(names[i], i, names);
+      if (!continuousFor(ordered, names.length)) return nominalColor(names[i], i, names);
       const steps = ramp;
       if (names.length === 1) return steps[steps.length - 1];
       return steps[Math.round(i * (steps.length - 1) / (names.length - 1))];
@@ -589,7 +593,9 @@ export async function analysisPage(app) {
    * back to the shown order.
    */
   function nominalColor(name, i, shown) {
-    const levels = [...new Set(data.map((r) => groupOfRow(r, state.get().group)))].sort();
+    const g = state.get().group;
+    const levels = [...new Set(data.map((r) => groupOfRow(r, g)))].sort();
+    if (g === 'temp') levels.sort((a, b) => parseFloat(a) - parseFloat(b));
     const k = levels.indexOf(name);
     if (levels.length <= 8 && k >= 0) return series(k, levels.length);
     return series(i, shown.length);
@@ -674,7 +680,7 @@ export async function analysisPage(app) {
       names = [...keep].sort().concat(['other']);
     }
     const ramp = seqRamp();
-    const colorOf = (i) => (names.length === 1 ? series(0) : !ordered ? nominalColor(names[i], i, names)
+    const colorOf = (i) => (names.length === 1 ? series(0) : !continuousFor(ordered, names.length) ? nominalColor(names[i], i, names)
       : ramp[Math.round(i * (ramp.length - 1) / (names.length - 1))]);
 
     // bins over the weighted 0.5–99.5 % range
@@ -762,6 +768,12 @@ export async function analysisPage(app) {
 
   app.replaceChildren(
     h('div', { class: 'page-head' }, h('h1', {}, 'Analysis'),
+      h('button', { style: 'margin-left:auto;order:9', title: 'Back to the default chart: clears all selections and filters',
+        onclick: () => {
+          state.set(DEFAULTS);
+          if (location.hash.includes('?')) history.replaceState(null, '', '#/analysis');
+          load();
+        } }, 'Reset'),
       h('span', { class: 'sub' }, 'e.g. X: date, Y: pace, colour: heart rate — or X: pace, Y: heart rate, colour: date.')),
     controls, controls2, filters, h('div', { class: 'card' }, chartEl, info, statsEl));
   await load();
