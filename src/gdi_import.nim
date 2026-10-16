@@ -9,7 +9,7 @@ import std / [os, json, math, strutils, strformat, times, tables, algorithm, set
 import gdi_db, gdi_models, gdi_metrics
 
 const
-  ImporterVersion* = "12"
+  ImporterVersion* = "13"
     ## Bump whenever derived data changes; forces a full re-import.
   BestEffortDistances* = [400.0, 1000.0, 1609.344, 3000.0, 5000.0, 10000.0,
                           15000.0, 20000.0, 21097.5, 30000.0, 40000.0, 42195.0,
@@ -452,6 +452,106 @@ proc meanMax*(t, cum: seq[float], durations: openArray[int]): seq[(int, float, f
       if v > best: best = v; bestStart = t[i]
     if best > 0: result.add (D, best, bestStart)
 
+# ── heart-rate recovery ─────────────────────────────────────────────────────
+# Where a hard stretch clearly ends (mean speed over the previous 60 s ≥ 1.15 ×
+# the activity's median moving speed, and the next 60 s at most 0.7 × that),
+# take the peak HR around the end and the drop 60 / 120 s after the peak.
+# Grade-adjusted speed where available, so hill repeats count by effort.
+# Running only: on a bike (without power) a slowdown is mostly a descent.
+
+type HrRecovery* = object
+  tEnd*, effortSecs*, effortSpeed*, postSpeed*, peakHr*, tPeak*, drop60*, drop120*: float
+
+proc hrRecovery*(t, cum, hr: seq[float]): seq[HrRecovery] =
+  ## `cum`: cumulative (grade-adjusted) distance. Needs gap-free samples
+  ## around each point (auto-pause leaves holes → that point is skipped).
+  let n = t.len
+  if n < 300 or cum.len != n or hr.len != n: return
+  proc idxAt(x: float): int =
+    ## last sample with t ≤ x (binary search)
+    var lo = 0
+    var hi = n - 1
+    if x < t[0]: return -1
+    while lo < hi:
+      let mid = (lo + hi + 1) div 2
+      if t[mid] <= x: lo = mid else: hi = mid - 1
+    lo
+  proc cumAt(x: float): float =
+    let i = idxAt(x)
+    if i < 0: return cum[0]
+    if i >= n - 1: return cum[^1]
+    let f = (x - t[i]) / max(1e-9, t[i+1] - t[i])
+    cum[i] + f * (cum[i+1] - cum[i])
+  proc meanSpeed(a, b: float): float = (cumAt(b) - cumAt(a)) / (b - a)
+  proc hrAt(x: float): float =
+    ## HR at time x from a sample within 3 s, else NaN
+    let i = idxAt(x)
+    var best = NaN
+    var bd = 3.01
+    for k in [i, i + 1]:
+      if k >= 0 and k < n and abs(t[k] - x) < bd and not hr[k].isNaN and hr[k] > 0:
+        bd = abs(t[k] - x); best = hr[k]
+    best
+  proc continuous(a, b: float): bool =
+    ## no recording hole longer than 5 s in [a, b]
+    let i0 = max(0, idxAt(a))
+    let i1 = idxAt(b)
+    if i1 < 0 or t[min(n - 1, i1 + 1)] < b - 5: return false
+    for k in i0 + 1 .. min(n - 1, i1 + 1):
+      if t[k] - t[k-1] > 5: return false
+    true
+  # median moving speed (1-s resolution not assumed: weight by dt)
+  var sp: seq[float]
+  for i in 1 ..< n:
+    let dt = t[i] - t[i-1]
+    if dt > 0 and dt <= 5:
+      let v = (cum[i] - cum[i-1]) / dt
+      if v > 0.5: sp.add v
+  if sp.len < 100: return
+  sp.sort()
+  let med = sp[sp.len div 2]
+  var i = 0
+  var nextAllowed = t[0] + 60
+  while i < n:
+    let te = t[i]
+    if te < nextAllowed or te + 125 > t[^1]: inc i; continue
+    let before = meanSpeed(te - 60, te)
+    let after = meanSpeed(te + 5, te + 65)
+    if before >= 1.15 * med and after <= 0.7 * before:
+      # the sharpest slowdown within the next 20 s is the end of the effort
+      var bestT = te
+      var bestDrop = before - after
+      var k = i + 1
+      while k < n and t[k] <= te + 20:
+        let d = meanSpeed(t[k] - 60, t[k]) - meanSpeed(t[k] + 5, t[k] + 65)
+        if d > bestDrop: bestDrop = d; bestT = t[k]
+        inc k
+      # peak HR lags the effort: look 10 s before to 20 s after its end
+      var peak = NaN
+      var tp = NaN
+      for j in max(0, idxAt(bestT - 10)) .. min(n - 1, idxAt(bestT + 20)):
+        if not hr[j].isNaN and (peak.isNaN or hr[j] > peak): peak = hr[j]; tp = t[j]
+      if not peak.isNaN and continuous(bestT - 60, tp + 60):
+        let h60 = hrAt(tp + 60)
+        var r = HrRecovery(tEnd: bestT, effortSpeed: meanSpeed(bestT - 60, bestT),
+                           postSpeed: meanSpeed(tp, tp + 60), peakHr: peak, tPeak: tp,
+                           drop60: peak - h60, drop120: NaN)
+        # the second minute only counts if no new effort started in it
+        if tp + 120 <= t[^1] and continuous(tp + 60, tp + 120) and
+           meanSpeed(tp + 60, tp + 120) <= 0.75 * r.effortSpeed:
+          r.drop120 = peak - hrAt(tp + 120)
+        # effort duration: back from the end while 30-s speed stays elevated
+        var s0 = bestT - 30
+        while s0 - 30 >= t[0] and bestT - s0 < 3600 and meanSpeed(s0 - 30, s0) >= 1.15 * med: s0 -= 10
+        r.effortSecs = bestT - s0
+        if not r.drop60.isNaN: result.add r
+        nextAllowed = tp + 120
+      else:
+        nextAllowed = bestT + 30
+      i = idxAt(nextAllowed) + 1
+      continue
+    inc i
+
 # ── aerobic decoupling (Pa:HR) ──────────────────────────────────────────────
 # Efficiency = output ÷ HR (output = grade-adjusted speed for runs, power for
 # rides with a power meter). After a 10 min warm-up, the remaining moving time
@@ -546,7 +646,7 @@ proc routeSignature*(lat, lon: seq[float]): (float, seq[(float, float)]) =
 
 proc deleteActivity*(db: DbConn, id: int) =
   for t in ["activities", "streams", "laps", "best_efforts", "hr_hist",
-            "speed_hist", "segments", "mmp", "route_sig"]:
+            "speed_hist", "segments", "mmp", "route_sig", "hr_recovery"]:
     let col = if t == "activities": "id" else: "activity_id"
     db.exec(sql("DELETE FROM " & t & " WHERE " & col & " = ?"), id)
 
@@ -797,6 +897,17 @@ proc importActivity*(db: DbConn, j: JsonNode) =
       for (D, v, s0) in meanMax(t, cum, MmpDurations):
         db.insertRow("mmp", @[("activity_id", %id), ("metric", %metric),
                               ("duration", %D), ("value", %v), ("start_t", %s0)])
+
+  # heart-rate recovery after hard stretches (on GAP where available)
+  if family == "running" and hr.len == st.get("t").len and distUsable:
+    let t = st.get("t")
+    let gapS = st.get("directGradeAdjustedSpeed")
+    let cumE = (if gapS.len == t.len: cumulative(t, median5(gapS)) else: clean.cum)
+    for r in hrRecovery(t, cumE, hr):
+      db.insertRow("hr_recovery", @[("activity_id", %id), ("t_end", %r.tEnd),
+        ("effort_secs", %r.effortSecs), ("effort_speed", jf r.effortSpeed),
+        ("post_speed", jf r.postSpeed), ("peak_hr", %r.peakHr), ("t_peak", %r.tPeak),
+        ("drop60", jf r.drop60), ("drop120", jf r.drop120)])
 
   # best efforts (on the cleaned distance)
   if distUsable:

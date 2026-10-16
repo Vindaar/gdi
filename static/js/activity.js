@@ -311,6 +311,20 @@ export async function activityPage(app, id) {
     { key: 'rank', label: 'All-time rank', fmt: (v) => (v === 1 ? '🏆 1' : `#${v}`) },
   ], { sortKey: 'distance', sortDesc: false })) : null;
 
+  const hrr = objects(d.hrRecovery || { cols: [], rows: [] });
+  const hrrTable = hrr.length ? h('div', { class: 'card' }, h('h2', {}, 'Heart-rate recovery'),
+    h('div', { class: 'muted', style: 'font-size:12px;margin-bottom:6px' }, 'Where the run clearly eased off a hard stretch: HR drop from the peak. Trend on the Performance page.'),
+    dataTable(hrr, [
+      { key: 't_end', label: 'At', fmt: fmtDur, defaultAsc: true },
+      { key: 'effort_secs', label: 'Effort', fmt: fmtDur },
+      { key: 'effort_speed', label: 'GAP before', fmt: (v) => fmtPace(v) },
+      { key: 'peak_hr', label: 'Peak HR', fmt: (v) => fmtNum(v) },
+      { key: 'drop60', label: '−60 s', fmt: (v) => (v == null ? '–' : `−${fmtNum(v)}`) },
+      { key: 'drop120', label: '−120 s', fmt: (v) => (v == null ? '–' : `−${fmtNum(v)}`),
+        title: (r) => (r.drop120 == null ? 'next effort started within 2 min' : null) },
+      { key: 'post_speed', label: 'Then', fmt: (v) => (v < 1.6 ? `walk ${fmtPace(v)}` : `jog ${fmtPace(v)}`) },
+    ], { sortKey: 't_end', sortDesc: false })) : null;
+
   // ── every summary field ──
   const kv = h('dl', { class: 'kv' }, Object.entries(sum).filter(([, v]) => v != null && typeof v !== 'object')
     .flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, String(v))]));
@@ -343,7 +357,7 @@ export async function activityPage(app, id) {
     h('div', { class: 'grid', style: `grid-template-columns:${hasGps ? 'minmax(0,5fr) minmax(0,6fr)' : '1fr'};margin-bottom:16px;align-items:start` },
       hasGps ? h('div', { class: 'card', style: 'position:sticky;top:60px' }, mapEl) : null,
       h('div', {}, t.length ? extraPicker : h('div', { class: 'empty' }, 'No time-series data for this activity (yet).'), selEl, chartsEl)),
-    h('div', { class: 'grid cols-2', style: 'margin-bottom:16px;align-items:start' }, splitTable, lapTable, effortTable),
+    h('div', { class: 'grid cols-2', style: 'margin-bottom:16px;align-items:start' }, splitTable, lapTable, effortTable, hrrTable),
     rawDetails);
 
   if (hasGps) {

@@ -158,6 +158,18 @@ CREATE TABLE IF NOT EXISTS mmp (          -- mean-maximal values by duration
   PRIMARY KEY (activity_id, metric, duration)
 );
 CREATE INDEX IF NOT EXISTS mmp_md ON mmp(metric, duration, value);
+CREATE TABLE IF NOT EXISTS hr_recovery (  -- HR drop after easing off a hard stretch (gdi_import.hrRecovery)
+  activity_id INTEGER NOT NULL,
+  t_end       REAL NOT NULL,          -- s from start: where the effort ends
+  effort_secs REAL,                   -- how long the hard stretch lasted
+  effort_speed REAL,                  -- mean (GAP) speed over the last 60 s of it, m/s
+  post_speed  REAL,                   -- mean speed during the 60 s after the peak
+  peak_hr     REAL,
+  t_peak      REAL,
+  drop60      REAL,                   -- peak − HR 60 s after the peak
+  drop120     REAL,                   -- NULL if the next effort started within 120 s
+  PRIMARY KEY (activity_id, t_end)
+);
 CREATE TABLE IF NOT EXISTS run_model (    -- expected-pace model, see gdi_models
   activity_id   INTEGER PRIMARY KEY,
   delta         REAL,                 -- s/km, actual − expected (negative = faster)

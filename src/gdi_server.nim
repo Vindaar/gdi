@@ -136,6 +136,7 @@ proc apiActivity(db: DbConn, id: string): JsonNode =
     "hrHist": db.queryTable("SELECT bpm, secs FROM hr_hist WHERE activity_id = ? ORDER BY bpm", id),
     "speedHist": db.queryTable("SELECT bucket, secs, gap_secs FROM speed_hist WHERE activity_id = ? ORDER BY bucket", id),
     "segments": db.queryTable("SELECT * FROM segments WHERE activity_id = ? ORDER BY idx", id),
+    "hrRecovery": db.queryTable("SELECT * FROM hr_recovery WHERE activity_id = ? ORDER BY t_end", id),
     "settings": db.settings(),
     "model": db.queryTable("SELECT * FROM run_model WHERE activity_id = ?", id).firstRowObj,
     "modelNoise": db.getValue(sql"SELECT value FROM meta WHERE key = 'run_model_noise'"),
@@ -369,6 +370,14 @@ proc apiBlock(db: DbConn, family, fromD, toD: string): JsonNode =
   for r in gm: health[r[0].getStr] = r[1]
   result["health"] = health
 
+proc apiHrRecovery(db: DbConn): JsonNode =
+  ## Every detected recovery (gdi_import.hrRecovery) with its activity.
+  db.queryTable("""SELECT r.activity_id, a.start_local, a.name, r.t_end, r.effort_secs,
+      r.effort_speed, r.post_speed, r.peak_hr, r.drop60, r.drop120, a.w_temp
+    FROM hr_recovery r JOIN activities a ON a.id = r.activity_id
+    WHERE a.dq_flags IS NULL OR (a.dq_flags NOT LIKE '%duplicate_of%' AND a.dq_flags NOT LIKE '%hr_cadence_lock%')
+    ORDER BY a.start_local, r.t_end""")
+
 proc apiGarminMetrics(db: DbConn, names: string): JsonNode =
   ## {metric: [[date, value, text], …]} for the requested (or all) metrics.
   result = newJObject()
@@ -487,6 +496,7 @@ proc handle*(cfg: ServerCfg, req: Request, prefix = ""): Future[void] {.async, g
                                              qp.getOrDefault("kind", "hr")))
       elif r == @["hist"] and req.reqMethod == HttpPost:
         await req.sendJson(db.apiSampleHist(parseJson(req.body)))
+      elif r == @["hr-recovery"]: await req.sendJson(db.apiHrRecovery)
       elif r == @["block"]:
         await req.sendJson(db.apiBlock(qp.getOrDefault("family", "running"),
                                        qp.getOrDefault("from", ""), qp.getOrDefault("to", "")))

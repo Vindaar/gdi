@@ -76,8 +76,9 @@ export async function dashboardPage(app) {
   const [fitEl, fitChart] = mk();
   const [devEl, devChart] = mk();
   const [decEl, decChart] = mk();
+  const [hrrEl, hrrChart] = mk();
   const garmin = createGarminCard(mk);
-  const timeCharts = [loadChart, fitChart, devChart, decChart, ...garmin.charts];   // x = dates (ms)
+  const timeCharts = [loadChart, fitChart, devChart, decChart, hrrChart, ...garmin.charts];   // x = dates (ms)
   const tilesEl = h('div', { class: 'tiles', style: 'margin-bottom:16px' });
   const zoneTotalEl = h('div', {});
   const controls = h('div', { class: 'filters' });
@@ -271,6 +272,7 @@ export async function dashboardPage(app) {
       ],
     }, true);
     decCount.textContent = `${decPts.length} steady runs in range`;
+    await drawHrr(fromIso, timeAxis, th);
     garmin.draw(fromIso).then(() => { if (zoom) applyRange(zoom); }).catch((e) => console.error(e));
     fitTitle.textContent = `Pace at ${refHr} bpm (grade-adjusted, flat road, 30 min into the run)`;
 
@@ -394,6 +396,49 @@ export async function dashboardPage(app) {
   const refHrInput = h('label', { style: 'flex-direction:row;align-items:center;gap:6px' }, 'reference HR',
     (() => { const el = h('input', { type: 'number', min: 100, max: 190, step: 5, value: s.refHr || 140, style: 'width:70px' });
       el.addEventListener('change', () => { state.set({ refHr: +el.value }); draw(); }); return el; })());
+  // heart-rate recovery after hard stretches (gdi_import.hrRecovery)
+  const hrrCount = h('span', { class: 'muted' });
+  const hrrCtl = h('span', { style: 'display:flex;gap:10px;align-items:center' });
+  let hrrRows = null;
+  async function drawHrr(fromIso, timeAxis, th) {
+    const s = state.get();
+    hrrRows ??= objects(await api('hr-recovery'));
+    const win = s.hrrWin || 60;
+    const minPeak = s.hrrPeak ?? Z.hrFloors[3];
+    hrrCtl.replaceChildren(
+      segmented([[60, '60 s'], [120, '120 s']], win, (v) => { state.set({ hrrWin: v }); drawHrr(fromIso, timeAxis, th); }),
+      h('label', { style: 'flex-direction:row;align-items:center;gap:6px' }, 'peak HR ≥',
+        (() => { const el = h('input', { type: 'number', min: 100, max: 200, step: 1, value: minPeak, style: 'width:64px' });
+          el.addEventListener('change', () => { state.set({ hrrPeak: +el.value }); drawHrr(fromIso, timeAxis, th); }); return el; })()));
+    const key = win === 120 ? 'drop120' : 'drop60';
+    const ev = hrrRows.filter((r) => r.start_local.slice(0, 10) >= fromIso && r.peak_hr >= minPeak && r[key] != null);
+    // walking / standing after the effort lets HR fall further than jogging, so keep them apart
+    const WALK = 1.6;   // m/s ≈ 10:25 /km
+    const pt = (r) => [Date.parse(r.start_local) + r.t_end * 1000, r[key], r.name, r.activity_id, r.peak_hr, r.effort_secs, r.post_speed];
+    const walk = ev.filter((r) => r.post_speed < WALK).map(pt), jog = ev.filter((r) => r.post_speed >= WALK).map(pt);
+    // per-session median (several reps per run), then median of the last 8 sessions
+    const bySession = new Map();
+    for (const r of ev) { if (!bySession.has(r.activity_id)) bySession.set(r.activity_id, [Date.parse(r.start_local), []]); bySession.get(r.activity_id)[1].push(r[key]); }
+    const sess = [...bySession.values()].map(([t, xs]) => [t, median(xs)]).sort((a, b) => a[0] - b[0]);
+    const roll = sess.map((p, i) => [p[0], median(sess.slice(Math.max(0, i - 7), i + 1).map((q) => q[1]))]);
+    hrrCount.textContent = `${ev.length} recoveries in ${bySession.size} runs`;
+    const fmtPt = (p) => `<b>${p.data[2]}</b><br>${new Date(p.data[0]).toISOString().slice(0, 10)}<br>` +
+      `peak ${p.data[4]} bpm → −${p.data[1]} bpm after ${win} s<br>effort ${fmtDur(p.data[5])} · then ${fmtPace(p.data[6])} /km`;
+    hrrChart.setOption({
+      animation: false, grid: { left: 56, right: 16, top: 30, bottom: 36 }, dataZoom: [{ type: 'inside' }],
+      legend: { top: 0, textStyle: { color: th.ink2 } },
+      tooltip: { ...baseTooltip(th), trigger: 'item', formatter: (p) => (p.seriesType === 'scatter' ? fmtPt(p) : `median of last 8 runs: −${(+p.data[1]).toFixed(0)} bpm`) },
+      xAxis: timeAxis,
+      yAxis: { type: 'value', ...baseAxis(th), axisLabel: { ...baseAxis(th).axisLabel, formatter: (v) => (v ? `−${v}` : '0') } },
+      series: [
+        { name: 'Walked / stood after', type: 'scatter', data: walk, symbolSize: 7, itemStyle: { color: series(0), opacity: 0.7 } },
+        { name: 'Jogged after', type: 'scatter', data: jog, symbolSize: 7, symbol: 'diamond', itemStyle: { color: series(2), opacity: 0.7 } },
+        { name: 'Median of last 8 runs', type: 'line', symbol: 'none', data: roll, lineStyle: { width: 2.5, color: series(0) }, itemStyle: { color: series(0) } },
+      ],
+    }, true);
+  }
+  hrrChart.on('click', (p) => { if (p.seriesType === 'scatter') location.hash = `#/activity/${p.data[3]}`; });
+
   drawControls();
   app.replaceChildren(
     h('div', { class: 'page-head' }, h('h1', {}, 'Performance')),
@@ -426,6 +471,11 @@ export async function dashboardPage(app) {
         h('h2', { style: 'margin:0' }, 'Aerobic endurance: decoupling'), decMinSel, decCount),
       h('div', { class: 'muted', style: 'font-size:12px' }, 'Efficiency (grade-adjusted speed ÷ HR) lost from the 1st to the 2nd half of steady runs, after a 10 min warm-up. Grey band ±5 %: well coupled. Rising values on long runs point to limited aerobic endurance (or heat, fuelling, fatigue).'),
       decEl),
+    h('div', { class: 'card', style: 'margin-top:16px' },
+      h('div', { class: 'filters', style: 'margin-bottom:4px;align-items:baseline' },
+        h('h2', { style: 'margin:0' }, 'Heart-rate recovery'), hrrCtl, hrrCount),
+      h('div', { class: 'muted', style: 'font-size:12px' }, 'HR drop after the peak, wherever a run clearly eases off a hard stretch (≥ 1.15 × the run\'s median grade-adjusted pace for a minute, then ≤ 0.7 × that). Larger drops = faster autonomic recovery; compare like with like (peak HR, walking vs jogging after). Running only. Click a point to open the run.'),
+      hrrEl),
     garmin.el,
     selectionEl);
   await draw();
