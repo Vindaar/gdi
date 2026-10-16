@@ -208,8 +208,8 @@ export async function dashboardPage(app) {
       xAxis: { type: 'time', ...baseAxis(th), splitLine: { show: false } },
       yAxis: { type: 'value', ...baseAxis(th) },
       series: [
-        { name: 'Acute load (7 d)', type: 'line', symbol: 'none', data: atlS, lineStyle: { width: 2, color: series(1) }, itemStyle: { color: series(1) } },
-        { name: 'Chronic load (28 d)', type: 'line', symbol: 'none', data: ctlS, lineStyle: { width: 2, color: series(0) }, itemStyle: { color: series(0) } },
+        { name: 'Acute load (7 d)', type: 'line', symbol: 'none', data: atlS, lineStyle: { width: 2, color: series(1, 2) }, itemStyle: { color: series(1, 2) } },
+        { name: 'Chronic load (28 d)', type: 'line', symbol: 'none', data: ctlS, lineStyle: { width: 2, color: series(0, 2) }, itemStyle: { color: series(0, 2) } },
       ],
     }, true);
 
@@ -245,7 +245,7 @@ export async function dashboardPage(app) {
       xAxis: timeAxis,
       yAxis: { type: 'value', inverse: true, ...baseAxis(th), axisLabel: { ...baseAxis(th).axisLabel, formatter: (v) => `${v > 0 ? '+' : ''}${v}` } },
       series: [{ type: 'scatter', symbolSize: 6, data: devs,
-        itemStyle: { color: (p) => (Math.abs(p.data[1]) > 1.5 * noise ? series(1) : series(0)), opacity: 0.75 },
+        itemStyle: { color: (p) => (Math.abs(p.data[1]) > 1.5 * noise ? series(1, 2) : series(0, 2)), opacity: 0.75 },
         markArea: { silent: true, itemStyle: { color: th.grid, opacity: 0.6 }, data: [[{ yAxis: -noise }, { yAxis: noise }]] },
         markLine: { silent: true, symbol: 'none', lineStyle: { color: th.axis, width: 1, type: 'solid' }, label: { show: false }, data: [{ yAxis: 0 }] } }],
     }, true);
@@ -431,9 +431,9 @@ export async function dashboardPage(app) {
       xAxis: timeAxis,
       yAxis: { type: 'value', ...baseAxis(th), axisLabel: { ...baseAxis(th).axisLabel, formatter: (v) => (v ? `−${v}` : '0') } },
       series: [
-        { name: 'Walked / stood after', type: 'scatter', data: walk, symbolSize: 7, itemStyle: { color: series(0), opacity: 0.7 } },
-        { name: 'Jogged after', type: 'scatter', data: jog, symbolSize: 7, symbol: 'diamond', itemStyle: { color: series(2), opacity: 0.7 } },
-        { name: 'Median of last 8 runs', type: 'line', symbol: 'none', data: roll, lineStyle: { width: 2.5, color: series(0) }, itemStyle: { color: series(0) } },
+        { name: 'Walked / stood after', type: 'scatter', data: walk, symbolSize: 7, itemStyle: { color: series(0, 3), opacity: 0.7 } },
+        { name: 'Jogged after', type: 'scatter', data: jog, symbolSize: 7, symbol: 'diamond', itemStyle: { color: series(2, 3), opacity: 0.7 } },
+        { name: 'Median of last 8 runs', type: 'line', symbol: 'none', data: roll, lineStyle: { width: 2.5, color: series(0, 3) }, itemStyle: { color: series(0, 3) } },
       ],
     }, true);
   }

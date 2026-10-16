@@ -70,7 +70,7 @@ export async function comparePage(app) {
   ];
   const chartsEl = h('div', { class: 'stream-charts' });
   const legend = h('div', { class: 'filters', style: 'margin-bottom:8px' }, acts.map((a, i) =>
-    h('span', { style: 'display:flex;gap:6px;align-items:center' }, h('span', { style: `width:14px;height:3px;background:${series(i)};display:inline-block` }),
+    h('span', { style: 'display:flex;gap:6px;align-items:center' }, h('span', { style: `width:14px;height:3px;background:${series(i, acts.length)};display:inline-block` }),
       h('a', { href: `#/activity/${a.id}` }, `${fmtDate(a.start_local)} · ${a.name}`))));
 
   // stats table: one column per activity
@@ -94,7 +94,7 @@ export async function comparePage(app) {
   const exp = data.map(([d]) => d.model);
   if (exp.some(Boolean)) rows.push(['Vs expected pace', (a, i) => (exp[i] ? `${exp[i].delta > 0 ? '+' : '−'}${Math.abs(Math.round(exp[i].delta))} s/km` : '–')]);
   const table = h('table', { class: 'data' },
-    h('thead', {}, h('tr', {}, h('th', { class: 'l' }, ''), acts.map((a, i) => h('th', {}, h('span', { style: `display:inline-block;width:10px;height:10px;border-radius:2px;background:${series(i)};margin-right:6px` }), `#${i + 1}`)))),
+    h('thead', {}, h('tr', {}, h('th', { class: 'l' }, ''), acts.map((a, i) => h('th', {}, h('span', { style: `display:inline-block;width:10px;height:10px;border-radius:2px;background:${series(i, acts.length)};margin-right:6px` }), `#${i + 1}`)))),
     h('tbody', {}, rows.map(([label, f]) => h('tr', {}, h('td', { class: 'l sub' }, label), acts.map((a, i) => h('td', {}, f(a, i)))))));
 
   app.replaceChildren(
@@ -118,7 +118,7 @@ export async function comparePage(app) {
         { stroke: css('--muted'), grid: { stroke: css('--grid') }, ticks: { show: false }, size: 56, values: (u, v) => v.map((x) => (p.pace ? fmtDur(x) : x)) },
       ],
       series: [{ label: 'km', value: (u, v) => (v == null ? '–' : v.toFixed(2)) },
-        ...acts.map((a, i) => ({ label: `#${i + 1}`, stroke: series(i), width: 1.5, points: { show: false }, value: (u, v) => (v == null ? '–' : p.fmt(v)) }))],
+        ...acts.map((a, i) => ({ label: `#${i + 1}`, stroke: series(i, acts.length), width: 1.5, points: { show: false }, value: (u, v) => (v == null ? '–' : p.fmt(v)) }))],
     };
     plots.push(new uPlot(opts, [xs, ...ys], el));
   }

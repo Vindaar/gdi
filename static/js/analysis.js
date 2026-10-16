@@ -401,7 +401,7 @@ export async function analysisPage(app) {
     };
     const groupColor = (i) => {
       if (!useGroups) return null;
-      if (!ordered) return series(i);
+      if (!ordered) return nominalColor(names[i], i, names);
       const steps = ramp;
       if (names.length === 1) return steps[steps.length - 1];
       return steps[Math.round(i * (steps.length - 1) / (names.length - 1))];
@@ -441,10 +441,10 @@ export async function analysisPage(app) {
       }
     } else if (overlay) {
       // two metrics, same unit → one panel, two colours
-      addScatter(ptsY, Y, 0, series(0), 'circle', Y.label, 'y');
-      addTrend(ptsY, 0, series(0), Y.label);
-      addScatter(ptsY2, Y2, 0, series(1), 'circle', Y2.label, 'y2');
-      addTrend(ptsY2, 0, series(1), Y2.label);
+      addScatter(ptsY, Y, 0, series(0, 2), 'circle', Y.label, 'y');
+      addTrend(ptsY, 0, series(0, 2), Y.label);
+      addScatter(ptsY2, Y2, 0, series(1, 2), 'circle', Y2.label, 'y2');
+      addTrend(ptsY2, 0, series(1, 2), Y2.label);
       legendNames.push(Y.label, Y2.label);
     } else {
       const byGroup = (pts) => {
@@ -581,6 +581,20 @@ export async function analysisPage(app) {
     }
   }
 
+  /**
+   * Colour of a nominal group. Indexed by the group's position among all
+   * levels of the grouping in the loaded data (not just the filtered ones),
+   * so filtering never recolours a group; with "ggplot2 hue (per plot)" the
+   * number of levels is the number of hues. Folded charts (> 8 levels) fall
+   * back to the shown order.
+   */
+  function nominalColor(name, i, shown) {
+    const levels = [...new Set(data.map((r) => groupOfRow(r, state.get().group)))].sort();
+    const k = levels.indexOf(name);
+    if (levels.length <= 8 && k >= 0) return series(k, levels.length);
+    return series(i, shown.length);
+  }
+
   // ── histogram ──
   const statsEl = h('div', { style: 'margin-top:12px' });
   function groupOfRow(r, group) {
@@ -660,7 +674,7 @@ export async function analysisPage(app) {
       names = [...keep].sort().concat(['other']);
     }
     const ramp = seqRamp();
-    const colorOf = (i) => (names.length === 1 ? series(0) : !ordered ? series(i)
+    const colorOf = (i) => (names.length === 1 ? series(0) : !ordered ? nominalColor(names[i], i, names)
       : ramp[Math.round(i * (ramp.length - 1) / (names.length - 1))]);
 
     // bins over the weighted 0.5–99.5 % range

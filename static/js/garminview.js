@@ -47,8 +47,8 @@ export function createGarminCard(mk) {
       animation: false, grid: { left: 52, right: 12, top: 28, bottom: 32 }, dataZoom: [{ type: 'inside' }],
       tooltip: { ...baseTooltip(th), trigger: 'axis' }, xAxis: timeAxis, ...extra,
     });
-    const line = (name, data, i, extra = {}) => ({ name, type: 'line', symbol: 'none', data, connectNulls: true,
-      lineStyle: { width: 2, color: series(i) }, itemStyle: { color: series(i) }, ...extra });
+    const line = (name, data, i, extra = {}, n) => ({ name, type: 'line', symbol: 'none', data, connectNulls: true,
+      lineStyle: { width: 2, color: series(i, n) }, itemStyle: { color: series(i, n) }, ...extra });
     const paceAxis = { type: 'value', inverse: true, scale: true, ...baseAxis(th), axisLabel: { ...baseAxis(th).axisLabel, formatter: (v) => fmtDur(v) } };
     const empty = (c, text = 'no data in range') => c.setOption({ title: { text, left: 'center', top: 'middle', textStyle: { color: th.muted, fontSize: 12, fontWeight: 'normal' } } }, true);
 
@@ -61,12 +61,12 @@ export function createGarminCard(mk) {
     // race predictions (pace) + actual rolling bests
     const dist = { race_5k: 5000, race_10k: 10000, race_half: 21097.5, race_marathon: 42195 };
     const names = { race_5k: '5 km', race_10k: '10 km', race_half: 'Half', race_marathon: 'Marathon' };
-    const raceSeries = Object.keys(dist).map((k, i) => line(`${names[k]} (Garmin)`, pick(k, (v) => v / (dist[k] / 1000)), i));
+    const raceSeries = Object.keys(dist).map((k, i) => line(`${names[k]} (Garmin)`, pick(k, (v) => v / (dist[k] / 1000)), i, {}, 4));
     try {
       const [e5, e10] = await Promise.all([api('efforts?distance=5000&family=running'), api('efforts?distance=10000&family=running')]);
       for (const [rows, i, label, d] of [[objects(e5), 0, '5 km best (90 d)', 5], [objects(e10), 1, '10 km best (90 d)', 10]]) {
         const pts = rollingBest(rows).filter((p) => isoDay(p[0]) >= fromIso).map((p) => [p[0], p[1] / d]);
-        raceSeries.push({ name: label, type: 'scatter', symbolSize: 5, data: pts, itemStyle: { color: series(i), opacity: 0.6 } });
+        raceSeries.push({ name: label, type: 'scatter', symbolSize: 5, data: pts, itemStyle: { color: series(i, 4), opacity: 0.6 } });
       }
     } catch {}
     raceSeries.some((s) => s.data.length) ? charts.race.setOption(base({
@@ -99,14 +99,14 @@ export function createGarminCard(mk) {
         return `<b>${isoDay(t)}</b><br>` + ps.map((p) => `${p.seriesName}: ${Math.round(p.data[1])}`).join('<br>') +
           (r ? `<br>ratio ${r[1].toFixed(1)} · ${(r[2] || '').toLowerCase()}` : '');
       } },
-      series: [line('Acute (7 d)', acute, 0), line('Chronic (28 d)', chronic, 1)] }), true) : empty(charts.load);
+      series: [line('Acute (7 d)', acute, 0, {}, 2), line('Chronic (28 d)', chronic, 1, {}, 2)] }), true) : empty(charts.load);
 
     // fitness age
     const fa = pick('fitness_age'), faA = pick('fitness_age_achievable');
     fa.length ? charts.fitage.setOption(base({ legend: { top: 0, textStyle: { color: th.ink2, fontSize: 11 } },
       yAxis: { type: 'value', scale: true, ...baseAxis(th) },
       tooltip: { ...baseTooltip(th), trigger: 'axis', valueFormatter: (v) => (v == null ? '–' : `${(+v).toFixed(1)} y`) },
-      series: [line('Fitness age', fa, 0), line('Achievable', faA, 1, { step: 'end', lineStyle: { width: 1, type: 'dashed', color: series(1) } })] }), true) : empty(charts.fitage);
+      series: [line('Fitness age', fa, 0, {}, 2), line('Achievable', faA, 1, { step: 'end', lineStyle: { width: 1, type: 'dashed', color: series(1, 2) } }, 2)] }), true) : empty(charts.fitage);
 
     // heat / altitude acclimation (separate panels: % vs metres)
     const heat = pick('heat_acclimation');

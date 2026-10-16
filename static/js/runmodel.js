@@ -116,9 +116,9 @@ export async function runModelCard(a, model, noise) {
       series: [
         { name: 'Earlier segments', type: 'scatter', symbolSize: 5, itemStyle: { color: css('--axis'), opacity: 0.7 },
           data: rows.filter((r) => !r.mine).map((r) => [r.avg_hr, 1000 / r.avg_gap]) },
-        { name: 'This run', type: 'scatter', symbolSize: 9, z: 5, itemStyle: { color: series(1), borderColor: th.surface, borderWidth: 1.5 },
+        { name: 'This run', type: 'scatter', symbolSize: 9, z: 5, itemStyle: { color: series(1, 2), borderColor: th.surface, borderWidth: 1.5 },
           data: rows.filter((r) => r.mine).map((r) => [r.avg_hr, 1000 / r.avg_gap]) },
-        { name: 'Model (road, flat)', type: 'line', symbol: 'none', lineStyle: { width: 2, color: series(0) }, itemStyle: { color: series(0) }, data: line },
+        { name: 'Model (road, flat)', type: 'line', symbol: 'none', lineStyle: { width: 2, color: series(0, 2) }, itemStyle: { color: series(0, 2) }, data: line },
       ],
     });
   }).catch(() => {});

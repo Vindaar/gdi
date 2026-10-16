@@ -2,7 +2,7 @@
 import {
   api, postJson, h, fmtPace, hrZoneLabels, paceZoneLabels, ZONE_PRESETS, DEFAULT_ZONE_PALETTE,
   zonePaletteColors, applyZonePalette, SEQ_PRESETS, DEFAULT_SEQ_PALETTE, seqStops,
-  THEMES, currentTheme, setTheme, CAT_PRESETS, css,
+  THEMES, currentTheme, setTheme, CAT_PRESETS, css, ggHue,
 } from './util.js';
 
 export async function settingsPage(app) {
@@ -146,9 +146,10 @@ export async function settingsPage(app) {
   function drawCat() {
     const cur = s.catPalette || 'theme';
     catBox.replaceChildren(...Object.entries(CAT_PRESETS).map(([k, p]) => {
-      const cols = p.colors ? p.colors() : themeSeries();
-      const dots = h('span', { style: 'display:flex;gap:3px' },
-        Array.from({ length: 8 }, (_, i) => h('span', { style: `width:12px;height:12px;border-radius:50%;background:${cols[i]}` })));
+      const dot = (c) => h('span', { style: `width:12px;height:12px;border-radius:50%;background:${c}` });
+      const dots = p.examples
+        ? h('span', { style: 'display:flex;gap:10px' }, p.examples.map((n) => h('span', { style: 'display:flex;gap:3px' }, ggHue(n, 285).map(dot))))
+        : h('span', { style: 'display:flex;gap:3px' }, (p.colors ? p.colors() : themeSeries()).map(dot));
       return h('button', {
         class: cur === k ? 'primary' : '', style: 'display:flex;gap:8px;align-items:center', title: p.note,
         onclick: async () => {
@@ -161,7 +162,7 @@ export async function settingsPage(app) {
   const catCard = h('div', { class: 'card', style: 'margin-top:16px' },
     h('h2', {}, 'Series colours'),
     h('p', { class: 'sub' }, 'Colours for discrete groups (years in Analysis, activity types, gear …), up to 8 before the rest folds into "other". ',
-      'ggplot2 hue spaces 8 hues evenly around the HCL wheel starting at 285° (as ggplot2/ggplotnim do for 8 levels). It ignores the theme, and some neighbours are hard to tell apart with red-green colour blindness (e.g. olive vs. green).'),
+      'ggplot2 hue spaces hues evenly around the HCL wheel starting at 285°. "8 fixed" always uses the 8-level spacing, so a class keeps its colour everywhere. "Per plot" uses as many hues as the chart has classes (for Analysis groups: all levels of the grouping in the loaded data, so filtering doesn\'t recolour), giving wider spacing at the cost of colours differing between charts. Single-series charts keep the theme colour. Both ignore the theme.'),
     catBox, h('div', { style: 'margin-top:8px' }, catMsg));
 
   app.replaceChildren(

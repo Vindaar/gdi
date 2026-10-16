@@ -73,7 +73,16 @@ export const TYPE_LABEL = (k) => (k || '').replace(/_v2$|_ws$/, '').replace(/_/g
 export function css(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
-export const series = (i) => css(`--s${(i % 8) + 1}`);
+/**
+ * Colour of discrete series `i`. Pass `n` (the number of classes the chart
+ * maps to colour) where colour encodes a class: the "ggplot2 hue (per plot)"
+ * setting then spaces n hues evenly, like ggplot2 does. Without `n` (single
+ * series, fixed meanings) the theme's / fixed palette's colour is used.
+ */
+export const series = (i, n) => {
+  if (n && zoneSettings.catPalette === 'gghue-n') return ggHueCached(n)[i % n];
+  return css(`--s${(i % 8) + 1}`);
+};
 export const zoneColor = (z) => css(`--z${z}`);
 export function chartTheme() {
   return { ink: css('--ink'), ink2: css('--ink-2'), muted: css('--muted'), grid: css('--grid'),
@@ -434,6 +443,7 @@ export const THEMES = {
   sepia:    { label: 'Sepia', note: 'warm paper', swatch: ['#f4ecd8', '#fbf5e6', '#2b2117', '#a24d17', '#2f6db3', '#c4581f', '#008f74', '#a87a00'] },
   nord:     { label: 'Nord', note: 'cool slate', swatch: ['#242933', '#2e3440', '#eceff4', '#88c0d0', '#5e8fd6', '#cc6436', '#21998a', '#b88a10'] },
   monokai:  { label: 'Monokai', note: 'the editor classic', swatch: ['#1e1f1c', '#272822', '#f8f8f2', '#66d9ef', '#a6e22e', '#f92672', '#fd971f', '#ae81ff'] },
+  'monokai-vivid': { label: 'Monokai vivid', note: 'original neon colours in the charts', swatch: ['#1e1f1c', '#272822', '#f8f8f2', '#66d9ef', '#66d9ef', '#fd971f', '#ae81ff', '#a6e22e'] },
   black:    { label: 'Black', note: 'true black for OLED screens', swatch: ['#000000', '#0a0a0a', '#f5f5f5', '#3987e5', '#3987e5', '#d95926', '#199e70', '#c98500'] },
   contrast: { label: 'High contrast', swatch: ['#ffffff', '#ffffff', '#000000', '#0050a8', '#0060a8', '#c24e00', '#008266', '#9a6b00'] },
 };
@@ -464,9 +474,12 @@ export function hclHex(h, c, l) {
 }
 /** ggplot2's default discrete scale: n hues evenly around the wheel from `start` (C 100, L 65) */
 export const ggHue = (n, start = 15) => Array.from({ length: n }, (_, i) => hclHex((start + (360 * i) / n) % 360, 100, 65));
+const ggCache = new Map();
+const ggHueCached = (n) => { if (!ggCache.has(n)) ggCache.set(n, ggHue(n, 285)); return ggCache.get(n); };
 export const CAT_PRESETS = {
   theme: { label: 'Theme colours', note: 'tuned per theme, checked for colour-blind separation' },
-  gghue: { label: 'ggplot2 hue', note: '8 hues from 285°, C 100, L 65', colors: () => ggHue(8, 285) },
+  gghue: { label: 'ggplot2 hue (8 fixed)', note: '8 hues from 285°, C 100, L 65', colors: () => ggHue(8, 285) },
+  'gghue-n': { label: 'ggplot2 hue (per plot)', note: 'n hues from 285° for the n classes of each chart', examples: [2, 3, 5] },
 };
 
 let zoneSettings = {};

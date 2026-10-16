@@ -196,8 +196,8 @@ export async function blocksPage(app) {
       xAxis: { type: 'category', data: Array.from({ length: n }, (_, i) => `W${i + 1}`), ...baseAxis(th) },
       yAxis: { type: 'value', name: label, nameTextStyle: { color: th.ink2 }, ...baseAxis(th) },
       series: [
-        { name: 'A', type: 'bar', data: wa.map((w) => w[1]), itemStyle: { color: series(0), borderRadius: [4, 4, 0, 0] }, barGap: '10%' },
-        { name: 'B', type: 'bar', data: wb.map((w) => w[1]), itemStyle: { color: series(1), borderRadius: [4, 4, 0, 0] } },
+        { name: 'A', type: 'bar', data: wa.map((w) => w[1]), itemStyle: { color: series(0, 2), borderRadius: [4, 4, 0, 0] }, barGap: '10%' },
+        { name: 'B', type: 'bar', data: wb.map((w) => w[1]), itemStyle: { color: series(1, 2), borderRadius: [4, 4, 0, 0] } },
       ],
     }, true);
   }

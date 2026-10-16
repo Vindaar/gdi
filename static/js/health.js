@@ -112,8 +112,8 @@ export async function healthPage(app) {
       } else if (m.band) {
         base.legend = { top: 0, textStyle: { color: th.ink2 } };
         ser = [
-          { name: 'High', type: 'line', symbol: 'none', data: col('bb_high'), lineStyle: { width: 1.5, color: series(0) }, itemStyle: { color: series(0) } },
-          { name: 'Low', type: 'line', symbol: 'none', data: col('bb_low'), lineStyle: { width: 1.5, color: series(1) }, itemStyle: { color: series(1) } },
+          { name: 'High', type: 'line', symbol: 'none', data: col('bb_high'), lineStyle: { width: 1.5, color: series(0, 2) }, itemStyle: { color: series(0, 2) } },
+          { name: 'Low', type: 'line', symbol: 'none', data: col('bb_low'), lineStyle: { width: 1.5, color: series(1, 2) }, itemStyle: { color: series(1, 2) } },
         ];
       } else if (m.key === 'intensity') {
         ser = [{ name: 'Intensity min', type: 'bar', data: rows.map((r) => (r.intensity_mod ?? 0) + 2 * (r.intensity_vig ?? 0)), itemStyle: { color: series(0) } }];
@@ -194,10 +194,10 @@ export async function healthPage(app) {
         tooltip: { ...baseTooltip(th), trigger: 'axis', formatter: (ps) => `<b>${dates[ps[0].dataIndex]}</b><br>` + ps.map((p) => `${p.seriesName}: ${fmtClock(p.value)}`).join('<br>') },
         yAxis: { type: 'value', scale: true, inverse: true, ...baseAxis(th), axisLabel: { ...baseAxis(th).axisLabel, formatter: (v) => fmtClock(v) } },
         series: [
-          { name: 'Asleep', type: 'scatter', symbolSize: 4, data: rows.map((r) => r.bed_time), itemStyle: { color: series(0) } },
-          { name: 'Awake', type: 'scatter', symbolSize: 4, data: rows.map((r) => (r.wake_time == null ? null : r.wake_time + 24)), itemStyle: { color: series(1) } },
-          { name: 'Asleep (7-day)', type: 'line', symbol: 'none', data: rolling(rows.map((r) => r.bed_time), 7), lineStyle: { width: 2, color: series(0) }, itemStyle: { color: series(0) } },
-          { name: 'Awake (7-day)', type: 'line', symbol: 'none', data: rolling(rows.map((r) => (r.wake_time == null ? null : r.wake_time + 24)), 7), lineStyle: { width: 2, color: series(1) }, itemStyle: { color: series(1) } },
+          { name: 'Asleep', type: 'scatter', symbolSize: 4, data: rows.map((r) => r.bed_time), itemStyle: { color: series(0, 2) } },
+          { name: 'Awake', type: 'scatter', symbolSize: 4, data: rows.map((r) => (r.wake_time == null ? null : r.wake_time + 24)), itemStyle: { color: series(1, 2) } },
+          { name: 'Asleep (7-day)', type: 'line', symbol: 'none', data: rolling(rows.map((r) => r.bed_time), 7), lineStyle: { width: 2, color: series(0, 2) }, itemStyle: { color: series(0, 2) } },
+          { name: 'Awake (7-day)', type: 'line', symbol: 'none', data: rolling(rows.map((r) => (r.wake_time == null ? null : r.wake_time + 24)), 7), lineStyle: { width: 2, color: series(1, 2) }, itemStyle: { color: series(1, 2) } },
         ] }]);
     }
     for (const [title, opt] of extra.reverse()) {
@@ -298,9 +298,9 @@ export async function healthPage(app) {
       xAxis: axes.map((i) => ({ type: 'time', gridIndex: i, ...baseAxis(th), splitLine: { show: false }, axisLabel: { ...baseAxis(th).axisLabel, show: i === 2 } })),
       yAxis: axes.map((i) => ({ type: 'value', gridIndex: i, scale: i === 0, name: ['HR', 'Stress', 'Body Battery'][i], ...baseAxis(th) })),
       series: [
-        { name: 'HR', type: 'line', symbol: 'none', xAxisIndex: 0, yAxisIndex: 0, data: hr, lineStyle: { width: 1.5, color: series(0) }, itemStyle: { color: series(0) } },
-        { name: 'Stress', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: stress, itemStyle: { color: series(1) }, barWidth: 1 },
-        { name: 'Body Battery', type: 'line', symbol: 'none', xAxisIndex: 2, yAxisIndex: 2, data: bb, lineStyle: { width: 2, color: series(2) }, itemStyle: { color: series(2) }, areaStyle: { opacity: 0.12 } },
+        { name: 'HR', type: 'line', symbol: 'none', xAxisIndex: 0, yAxisIndex: 0, data: hr, lineStyle: { width: 1.5, color: series(0, 3) }, itemStyle: { color: series(0, 3) } },
+        { name: 'Stress', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: stress, itemStyle: { color: series(1, 3) }, barWidth: 1 },
+        { name: 'Body Battery', type: 'line', symbol: 'none', xAxisIndex: 2, yAxisIndex: 2, data: bb, lineStyle: { width: 2, color: series(2, 3) }, itemStyle: { color: series(2, 3) }, areaStyle: { opacity: 0.12 } },
       ],
     });
     if (scroll) dayBox.scrollIntoView({ behavior: 'smooth', block: 'start' });

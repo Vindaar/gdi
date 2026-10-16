@@ -80,9 +80,9 @@ export async function durationPage(app, tabs) {
       return DURATIONS.map((d) => { const r = m.get(d); return r ? { value: y(r.value), name: r.name, date: r.start_local, id: r.id, dur: d } : null; });
     };
     const ser = [
-      { name: nameA, type: 'line', symbol: 'circle', symbolSize: 7, data: toPts(ra), lineStyle: { width: 2.5, color: series(0) }, itemStyle: { color: series(0), borderColor: th.surface, borderWidth: 1.5 } },
+      { name: nameA, type: 'line', symbol: 'circle', symbolSize: 7, data: toPts(ra), lineStyle: { width: 2.5, color: series(0, B ? 2 : 1) }, itemStyle: { color: series(0, B ? 2 : 1), borderColor: th.surface, borderWidth: 1.5 } },
     ];
-    if (B) ser.push({ name: nameB, type: 'line', symbol: 'circle', symbolSize: 6, data: toPts(rb), lineStyle: { width: 2, color: series(1) }, itemStyle: { color: series(1), borderColor: th.surface, borderWidth: 1.5 } });
+    if (B) ser.push({ name: nameB, type: 'line', symbol: 'circle', symbolSize: 6, data: toPts(rb), lineStyle: { width: 2, color: series(1, 2) }, itemStyle: { color: series(1, 2), borderColor: th.surface, borderWidth: 1.5 } });
 
     // critical speed (pace metrics only)
     const cs = isPace ? fitCriticalSpeed(ra) : null;

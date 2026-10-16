@@ -95,9 +95,9 @@ export async function effortsPage(app) {
       yAxis: { type: 'value', inverse: true, scale: true, ...baseAxis(th), axisLabel: { ...baseAxis(th).axisLabel, formatter: (v) => fmtDur(v) } },
       dataZoom: [{ type: 'inside', xAxisIndex: 0 }, { type: 'inside', yAxisIndex: 0 }],
       series: [
-        { name: 'Effort', type: 'scatter', symbolSize: 8, itemStyle: { color: series(0), opacity: 0.6, borderColor: th.surface, borderWidth: 1 },
+        { name: 'Effort', type: 'scatter', symbolSize: 8, itemStyle: { color: series(0, 2), opacity: 0.6, borderColor: th.surface, borderWidth: 1 },
           data: byDate.map((r) => [r.start_local.slice(0, 10), r.time, r.name, r.avg_hr, r.id]) },
-        { name: 'Personal best', type: 'line', step: 'end', symbol: 'none', lineStyle: { width: 2, color: series(1) }, data: pb },
+        { name: 'Personal best', type: 'line', step: 'end', symbol: 'none', lineStyle: { width: 2, color: series(1, 2) }, data: pb },
       ],
     }, true);
   }
