@@ -295,3 +295,10 @@ td .tag { font-size: 11px; padding: 0 6px; margin-right: 2px; }
 .theme-swatch-dots i { width: 9px; height: 9px; border-radius: 50%; }
 .theme-name { font-weight: 600; }
 .theme-note { font-size: 11px; line-height: 1.3; }
+
+/* YYYY/MM/DD date field (util.dateInput): text + button opening the native picker */
+.date-input { position: relative; display: inline-flex; align-items: stretch; }
+.date-input .date-text { width: 8.2em; border-top-right-radius: 0; border-bottom-right-radius: 0; font-variant-numeric: tabular-nums; }
+.date-input .date-text.invalid { border-color: var(--critical); }
+.date-input .date-btn { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; padding: 0 7px; font-size: 13px; line-height: 1; }
+.date-input .date-native { position: absolute; left: 0; bottom: 0; width: 100%; height: 0; opacity: 0; pointer-events: none; border: 0; padding: 0; }

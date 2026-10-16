@@ -6,6 +6,7 @@ import {
   api, postJson, objects, dataTable, fmtKm, h, fmtDur, fmtDate, TYPE_LABEL, FAMILIES, remember, echart,
   chartTheme, baseAxis, baseTooltip, series, segmented, seqRamp,
   parseTags, uiSettings,
+  dateInput,
 } from './util.js';
 
 // `unit` decides whether two metrics can share one Y axis.
@@ -299,7 +300,7 @@ export async function analysisPage(app) {
       return el;
     };
     const date = (key) => {
-      const el = h('input', { type: 'date', value: state.get()[key] });
+      const el = dateInput({ value: state.get()[key] });
       el.addEventListener('change', () => { state.set({ [key]: el.value }); draw(); });
       return el;
     };

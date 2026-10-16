@@ -3,6 +3,7 @@
 import {
   api, objects, h, fmtDur, fmtNum, remember, echart, chartTheme, baseAxis, baseTooltip,
   series, segmented, tile, css, blueRamp, fmtKm, TYPE_LABEL, dataTable, fmtSpeedFor, speedUnit, parseTags, tagChips, orgText,
+  dateInput, fmtDate,
 } from './util.js';
 import { withHrv, baselines, normalCard, unusualSignals, rollingBaseline, fmtClock } from './baselines.js';
 
@@ -221,17 +222,17 @@ export async function healthPage(app) {
     const el = h('div', { class: 'chart tall' });
     const sl = j.sleep?.dailySleepDTO || {};
     const ni = idxOf.get(date);
-    if (ni != null) normalBox.replaceChildren(h('h2', {}, `${date}: compared with your normal`), normalCard(rowsAll, base, ni));
+    if (ni != null) normalBox.replaceChildren(h('h2', {}, `${fmtDate(date)}: compared with your normal`), normalCard(rowsAll, base, ni));
     const days = all.map((r) => r.date);
     const i = days.indexOf(date);
-    const picker = h('input', { type: 'date', value: date, min: days[0], max: days[days.length - 1] });
+    const picker = dateInput({ value: date, min: days[0], max: days[days.length - 1] });
     picker.addEventListener('change', () => {
       // snap to the nearest day we have data for
       const want = picker.value;
       const next = days.find((d) => d >= want) ?? days[days.length - 1];
       showDay(next, false);
     });
-    const longDate = new Date(date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const longDate = `${new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long' })} ${fmtDate(date)}`;
     const dayActs = actsOn(date);
     const actLinks = dayActs.map((a) => h('a', { class: 'tag', href: `#/activity/${a.id}`, title: `${fmtKm(a.distance)} km · ${fmtDur(a.moving_duration)}` },
       `${a.start_local.slice(11, 16)} ${TYPE_LABEL(a.type_key)}${a.distance ? ` ${fmtKm(a.distance, 1)} km` : ''}`));

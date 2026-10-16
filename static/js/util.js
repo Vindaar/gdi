@@ -49,10 +49,48 @@ export function fmtPace(v) {
 export const fmtKm = (m, d = 2) => (isNum(m) ? (m / 1000).toFixed(d) : '–');
 export const fmtKmh = (v) => (isNum(v) ? (v * 3.6).toFixed(1) : '–');
 export const fmtNum = (x, d = 0) => (isNum(x) ? x.toFixed(d) : '–');
+/** "2026-10-16…" → "2026/10/16" (+ " 10:14" with time). Dates show as YYYY/MM/DD everywhere. */
 export function fmtDate(iso, withTime = false) {
   if (!iso) return '–';
-  const d = iso.slice(0, 10);
+  const d = dateSlash(iso.slice(0, 10));
   return withTime ? `${d} ${iso.slice(11, 16)}` : d;
+}
+/** replace a leading ISO date (YYYY-MM-DD) in a label by YYYY/MM/DD; anything else unchanged */
+export const dateSlash = (v) => (typeof v === 'string' ? v.replace(/^(\d{4})-(\d{2})-(\d{2})/, '$1/$2/$3') : v);
+/** epoch ms → "YYYY/MM/DD" (UTC day, as the ISO strings the charts are built from) */
+export const fmtDay = (ms) => fmtDate(new Date(ms).toISOString());
+
+/**
+ * Date field shown as YYYY/MM/DD regardless of the browser locale (native
+ * date inputs follow it, e.g. mm/dd/yyyy). Behaves like an <input>: `.value`
+ * is ISO (YYYY-MM-DD or ''), fires 'change'. A button opens the native picker.
+ */
+export function dateInput({ value = '', min, max } = {}) {
+  const text = h('input', { type: 'text', class: 'date-text', placeholder: 'YYYY/MM/DD', inputmode: 'numeric', size: 10, spellcheck: 'false' });
+  const native = h('input', { type: 'date', class: 'date-native', tabindex: '-1', 'aria-hidden': 'true', min, max });
+  const btn = h('button', { type: 'button', class: 'date-btn', title: 'Pick a date', 'aria-label': 'Pick a date' }, '📅');
+  const box = h('span', { class: 'date-input' }, text, btn, native);
+  let iso = '';
+  const show = () => { text.value = iso ? dateSlash(iso) : ''; native.value = iso; text.classList.remove('invalid'); };
+  const parse = (s) => {
+    const m = s.trim().match(/^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})$/);
+    if (!m) return null;
+    const out = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+    const d = new Date(out + 'T12:00:00Z');
+    return !isNaN(d) && d.toISOString().slice(0, 10) === out ? out : null;
+  };
+  const commit = (v) => { if (v === iso) { show(); return; } iso = v; show(); box.dispatchEvent(new Event('change')); };
+  text.addEventListener('change', () => {
+    if (!text.value.trim()) return commit('');
+    const v = parse(text.value);
+    if (v) commit(v); else text.classList.add('invalid');
+  });
+  text.addEventListener('keydown', (e) => { if (e.key === 'Enter') text.dispatchEvent(new Event('change')); });
+  native.addEventListener('change', () => commit(native.value));
+  btn.addEventListener('click', () => { try { native.showPicker(); } catch { native.focus(); native.click(); } });
+  Object.defineProperty(box, 'value', { get: () => iso, set: (v) => { iso = v || ''; show(); } });
+  box.value = value;
+  return box;
 }
 export function fmtDistanceLabel(m) {
   const named = { 1609.344: '1 mi', 21097.5: 'Half', 42195: 'Marathon', 160934.4: '100 mi' };
@@ -227,6 +265,20 @@ export function echart(el) {
   // disable it and route the wheel through `axisWheelZoom` instead.
   const setOption = c.setOption.bind(c);
   c.setOption = (opt, ...rest) => {
+    // dates as YYYY/MM/DD: category labels that are ISO dates, and the axis
+    // value shown in axis tooltips / pointers of category and time axes
+    for (const k of ['xAxis', 'yAxis']) {
+      const axes = opt && opt[k] ? (Array.isArray(opt[k]) ? opt[k] : [opt[k]]) : [];
+      for (const ax of axes) {
+        if (ax.type === 'category') {
+          ax.axisLabel = { ...(ax.axisLabel || {}) };
+          if (!ax.axisLabel.formatter) ax.axisLabel.formatter = dateSlash;
+          ax.axisPointer = { ...(ax.axisPointer || {}), label: { formatter: (p) => dateSlash(String(p.value)), ...(ax.axisPointer?.label || {}) } };
+        } else if (ax.type === 'time') {
+          ax.axisPointer = { ...(ax.axisPointer || {}), label: { formatter: (p) => fmtDay(p.value), ...(ax.axisPointer?.label || {}) } };
+        }
+      }
+    }
     if (opt && opt.dataZoom) {
       const dzs = Array.isArray(opt.dataZoom) ? opt.dataZoom : [opt.dataZoom];
       for (const dz of dzs) if (dz.type === 'inside') dz.zoomOnMouseWheel = false;

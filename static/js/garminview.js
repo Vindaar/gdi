@@ -1,6 +1,6 @@
 // "Garmin's assessment": Garmin's server-side metrics (garmin sync-metrics),
 // shown as small multiples next to our own measures — never on a shared axis.
-import { api, objects, h, fmtDur, chartTheme, baseAxis, baseTooltip, series, css } from './util.js';
+import { api, objects, h, fmtDur, chartTheme, baseAxis, baseTooltip, series, css, fmtDate } from './util.js';
 
 const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 const STATUS_ORDER = ['DETRAINING', 'RECOVERY', 'MAINTAINING', 'PRODUCTIVE', 'PEAKING', 'OVERREACHING', 'UNPRODUCTIVE', 'STRAINED'];
@@ -96,7 +96,7 @@ export function createGarminCard(mk) {
       yAxis: { type: 'value', ...baseAxis(th) },
       tooltip: { ...baseTooltip(th), trigger: 'axis', formatter: (ps) => {
         const t = ps[0].data[0], r = acwr.get(t);
-        return `<b>${isoDay(t)}</b><br>` + ps.map((p) => `${p.seriesName}: ${Math.round(p.data[1])}`).join('<br>') +
+        return `<b>${fmtDate(isoDay(t))}</b><br>` + ps.map((p) => `${p.seriesName}: ${Math.round(p.data[1])}`).join('<br>') +
           (r ? `<br>ratio ${r[1].toFixed(1)} · ${(r[2] || '').toLowerCase()}` : '');
       } },
       series: [line('Acute (7 d)', acute, 0, {}, 2), line('Chronic (28 d)', chronic, 1, {}, 2)] }), true) : empty(charts.load);
@@ -124,7 +124,7 @@ export function createGarminCard(mk) {
     const st = pick('training_status').map((p) => [p[0], statusOf(p[2])]).filter((p) => p[1]);
     const cats = STATUS_ORDER.filter((s) => st.some((p) => p[1] === s)).concat([...new Set(st.map((p) => p[1]))].filter((s) => !STATUS_ORDER.includes(s)));
     st.length ? charts.status.setOption(base({ grid: { left: 110, right: 12, top: 16, bottom: 32 },
-      tooltip: { ...baseTooltip(th), trigger: 'item', formatter: (p) => `${isoDay(p.data[0])}: ${p.data[1].toLowerCase()}` },
+      tooltip: { ...baseTooltip(th), trigger: 'item', formatter: (p) => `${fmtDate(isoDay(p.data[0]))}: ${p.data[1].toLowerCase()}` },
       yAxis: { type: 'category', data: cats, ...baseAxis(th), axisLabel: { ...baseAxis(th).axisLabel, formatter: (v) => v.toLowerCase() } },
       series: [{ type: 'scatter', symbol: 'rect', symbolSize: [4, 12], data: st, itemStyle: { color: series(0) } }] }), true) : empty(charts.status);
   }

@@ -5,6 +5,7 @@ import {
   api, objects, h, dataTable, fmtDur, fmtKm, fmtNum, fmtDate, fmtPace, fmtSpeedFor, speedUnit,
   usesPace, TYPE_LABEL, FAMILIES, remember, fmtDistanceLabel, echart, chartTheme, baseAxis,
   baseTooltip, series, segmented, dqBadge,
+  dateInput,
 } from './util.js';
 import { durationPage } from './curves.js';
 
@@ -23,8 +24,8 @@ export async function effortsPage(app) {
   const famSel = h('select', {}, FAMILIES.slice(0, 4).map((f) => h('option', { value: f, selected: s.family === f }, f)));
   const custom = h('input', { type: 'number', step: '0.1', min: 0.1, placeholder: 'km', value: PRESETS.includes(s.distance) ? '' : s.distance / 1000 });
   const typeSel = h('select', {});
-  const from = h('input', { type: 'date', value: s.from });
-  const to = h('input', { type: 'date', value: s.to });
+  const from = dateInput({ value: s.from });
+  const to = dateInput({ value: s.to });
   const maxAscent = h('input', { type: 'number', min: 0, step: 1, value: s.maxAscent, placeholder: 'm/km' });
   const hideFlagged = h('input', { type: 'checkbox', checked: !!s.hideFlagged });
   const presetBox = h('span', {});

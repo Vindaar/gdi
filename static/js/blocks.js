@@ -4,6 +4,7 @@
 import {
   api, h, fmtDur, fmtNum, fmtPace, fmtSpeedFor, speedUnit, usesPace, FAMILIES, remember,
   segmented, echart, chartTheme, baseAxis, baseTooltip, series, zoneColor, settingsZones,
+  dateInput, fmtDate,
 } from './util.js';
 
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -27,7 +28,7 @@ export async function blocksPage(app) {
   if (!s.aFrom) applyPreset(s.preset);
 
   const famSel = h('select', {}, FAMILIES.slice(0, 4).map((f) => h('option', { value: f, selected: s.family === f }, f)));
-  const dateIn = (k) => h('input', { type: 'date', value: state.get()[k] });
+  const dateIn = (k) => dateInput({ value: state.get()[k] });
   const inputs = { aFrom: dateIn('aFrom'), aTo: dateIn('aTo'), bFrom: dateIn('bFrom'), bTo: dateIn('bTo') };
   const presetBox = h('span', {});
   const tableBox = h('div', {});
@@ -139,8 +140,8 @@ export async function blocksPage(app) {
     const nA = A.volume.n, nB = B.volume.n;
     tableBox.replaceChildren(h('table', { class: 'data blocks' },
       h('thead', {}, h('tr', {}, h('th', { class: 'l' }, ''),
-        h('th', {}, h('div', {}, 'A'), h('div', { class: 'muted' }, `${A.from} – ${A.to}`), h('div', { class: 'muted' }, `${nA} activities`)),
-        h('th', {}, h('div', {}, 'B'), h('div', { class: 'muted' }, `${B.from} – ${B.to}`), h('div', { class: 'muted' }, `${nB} activities`)),
+        h('th', {}, h('div', {}, 'A'), h('div', { class: 'muted' }, `${fmtDate(A.from)} – ${fmtDate(A.to)}`), h('div', { class: 'muted' }, `${nA} activities`)),
+        h('th', {}, h('div', {}, 'B'), h('div', { class: 'muted' }, `${fmtDate(B.from)} – ${fmtDate(B.to)}`), h('div', { class: 'muted' }, `${nB} activities`)),
         h('th', {}, 'B vs A'))),
       h('tbody', {}, rows)));
 

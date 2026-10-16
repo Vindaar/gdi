@@ -5,6 +5,7 @@ import {
   api, objects, h, fmtDur, fmtNum, fmtKm, fmtPace, FAMILIES, remember, echart, chartTheme,
   baseAxis, baseTooltip, series, zoneColor, segmented, settingsZones, zoneBlock, usesPace, tile,
   dataTable, fmtDate, fmtSpeedFor, speedUnit, TYPE_LABEL,
+  dateSlash, fmtDay,
 } from './util.js';
 import { createGarminCard } from './garminview.js';
 
@@ -150,7 +151,7 @@ export async function dashboardPage(app) {
       animation: false, grid: { left: 56, right: 16, top: 40, bottom: 36 }, dataZoom: [{ type: 'inside' }],
       legend: { top: 0, textStyle: { color: th.ink2 } },
       tooltip: { ...baseTooltip(th), trigger: 'axis', axisPointer: { type: 'shadow' },
-        formatter: (ps) => `<b>${ps[0].axisValue}</b><br>` + ps.slice().reverse().map((p) => {
+        formatter: (ps) => `<b>${dateSlash(ps[0].axisValue)}</b><br>` + ps.slice().reverse().map((p) => {
           const secs = mat[p.seriesIndex + firstZone][p.dataIndex];
           return `${p.marker}${p.seriesName}: ${fmtDur(secs)} (${(100 * secs / (colSum[p.dataIndex] || 1)).toFixed(0)}%)`;
         }).join('<br>') },
@@ -229,7 +230,7 @@ export async function dashboardPage(app) {
     fitChart.setOption({
       animation: false, grid: { left: 56, right: 16, top: 30, bottom: 36 }, dataZoom: [{ type: 'inside' }],
       legend: { top: 0, textStyle: { color: th.ink2 } },
-      tooltip: { ...baseTooltip(th), trigger: 'item', formatter: (p) => `${p.seriesIndex === 0 ? `<b>${p.data[2]}</b><br>` : 'Median of last 10 runs<br>'}${new Date(p.data[0]).toISOString().slice(0, 10)} · ${fmtDur(p.data[1])} /km` },
+      tooltip: { ...baseTooltip(th), trigger: 'item', formatter: (p) => `${p.seriesIndex === 0 ? `<b>${p.data[2]}</b><br>` : 'Median of last 10 runs<br>'}${fmtDay(p.data[0])} · ${fmtDur(p.data[1])} /km` },
       xAxis: timeAxis,
       yAxis: { type: 'value', inverse: true, scale: true, ...baseAxis(th), axisLabel: { ...baseAxis(th).axisLabel, formatter: (v) => fmtDur(v) } },
       series: [
@@ -241,7 +242,7 @@ export async function dashboardPage(app) {
     const noise = median(acts.filter((r) => r.exp_delta != null).map((r) => Math.abs(r.exp_delta))) || 17;
     devChart.setOption({
       animation: false, grid: { left: 56, right: 16, top: 16, bottom: 36 }, dataZoom: [{ type: 'inside' }],
-      tooltip: { ...baseTooltip(th), trigger: 'item', formatter: (p) => `<b>${p.data[2]}</b><br>${new Date(p.data[0]).toISOString().slice(0, 10)} · ${p.data[1] > 0 ? '+' : '−'}${Math.abs(Math.round(p.data[1]))} s/km vs expected` },
+      tooltip: { ...baseTooltip(th), trigger: 'item', formatter: (p) => `<b>${p.data[2]}</b><br>${fmtDay(p.data[0])} · ${p.data[1] > 0 ? '+' : '−'}${Math.abs(Math.round(p.data[1]))} s/km vs expected` },
       xAxis: timeAxis,
       yAxis: { type: 'value', inverse: true, ...baseAxis(th), axisLabel: { ...baseAxis(th).axisLabel, formatter: (v) => `${v > 0 ? '+' : ''}${v}` } },
       series: [{ type: 'scatter', symbolSize: 6, data: devs,
@@ -259,7 +260,7 @@ export async function dashboardPage(app) {
       animation: false, grid: { left: 56, right: 16, top: 30, bottom: 36 }, dataZoom: [{ type: 'inside' }],
       legend: { top: 0, textStyle: { color: th.ink2 } },
       tooltip: { ...baseTooltip(th), trigger: 'item', formatter: (p) => p.seriesIndex === 0
-        ? `<b>${p.data[2]}</b><br>${new Date(p.data[0]).toISOString().slice(0, 10)} · ${fmtDur(p.data[4])}<br>decoupling ${p.data[1].toFixed(1)} %`
+        ? `<b>${p.data[2]}</b><br>${fmtDay(p.data[0])} · ${fmtDur(p.data[4])}<br>decoupling ${p.data[1].toFixed(1)} %`
         : `median of last 8: ${(+p.data[1]).toFixed(1)} %` },
       xAxis: timeAxis,
       yAxis: { type: 'value', ...baseAxis(th), axisLabel: { ...baseAxis(th).axisLabel, formatter: (v) => `${v} %` } },
@@ -321,8 +322,8 @@ export async function dashboardPage(app) {
     zoneTotalEl.replaceChildren(zoneBlock(`Total ${zoom ? 'in view' : 'for range'} — ${kindLabel}`,
       totals.slice(fz), ctx.names.slice(fz), ctx.labels.slice(fz), fz));
     zoomBar.replaceChildren(...[
-      h('span', { class: 'sub' }, zoom ? `Showing ${r.from} → ${r.to}` : 'Scroll or drag on a chart to zoom; click a bar or point to list its activities.'),
-      h('button', { onclick: () => select(r, zoom ? `${r.from} → ${r.to}` : 'whole range') }, 'Activities in view'),
+      h('span', { class: 'sub' }, zoom ? `Showing ${fmtDate(r.from)} → ${fmtDate(r.to)}` : 'Scroll or drag on a chart to zoom; click a bar or point to list its activities.'),
+      h('button', { onclick: () => select(r, zoom ? `${fmtDate(r.from)} → ${fmtDate(r.to)}` : 'whole range') }, 'Activities in view'),
       zoom ? h('button', { onclick: resetZoom }, 'Reset zoom') : null].filter(Boolean));
   }
   function resetZoom() {
@@ -422,7 +423,7 @@ export async function dashboardPage(app) {
     const sess = [...bySession.values()].map(([t, xs]) => [t, median(xs)]).sort((a, b) => a[0] - b[0]);
     const roll = sess.map((p, i) => [p[0], median(sess.slice(Math.max(0, i - 7), i + 1).map((q) => q[1]))]);
     hrrCount.textContent = `${ev.length} recoveries in ${bySession.size} runs`;
-    const fmtPt = (p) => `<b>${p.data[2]}</b><br>${new Date(p.data[0]).toISOString().slice(0, 10)}<br>` +
+    const fmtPt = (p) => `<b>${p.data[2]}</b><br>${fmtDay(p.data[0])}<br>` +
       `peak ${p.data[4]} bpm → −${p.data[1]} bpm after ${win} s<br>effort ${fmtDur(p.data[5])} · then ${fmtPace(p.data[6])} /km`;
     hrrChart.setOption({
       animation: false, grid: { left: 56, right: 16, top: 30, bottom: 36 }, dataZoom: [{ type: 'inside' }],

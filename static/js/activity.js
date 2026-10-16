@@ -363,7 +363,7 @@ export async function activityPage(app, id) {
       h('div', { class: 'notes-head' }, h('h2', { style: 'margin:0' }, 'Diary'),
         ...tagChips(tags, (t) => { location.hash = `#/activities?tag=${encodeURIComponent(t)}`; }),
         h('button', { onclick: editTags }, tags.length ? 'Edit tags' : '+ Tags'),
-        note.date ? h('span', { class: 'muted', style: 'font-size:12px' }, `entry of ${note.date}`) : null),
+        note.date ? h('span', { class: 'muted', style: 'font-size:12px' }, `entry of ${fmtDate(note.date)}`) : null),
       shared.length ? h('div', { class: 'muted', style: 'font-size:12px;margin-bottom:4px' }, 'Same entry as: ', ...shared.flatMap((x, i) => (i ? [', ', x] : [x]))) : null,
       note.note ? orgText(note.note) : h('div', { class: 'muted' }, 'No diary entry for this activity yet.'),
       garminDesc ? h('div', { class: 'note-text muted' }, h('b', {}, 'Garmin: '), garminDesc) : null,

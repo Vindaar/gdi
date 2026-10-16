@@ -2,6 +2,7 @@
 import {
   api, objects, h, dataTable, fmtDur, fmtKm, fmtNum, fmtDate, fmtSpeedFor, speedUnit,
   FAMILIES, TYPE_LABEL, remember, dqBadge, FEEL_LABEL, parseTags, tagChips, exportMenu,
+  dateInput,
 } from './util.js';
 
 const state = remember('activities', {
@@ -32,8 +33,8 @@ export async function activitiesPage(app) {
     [...tagCounts.entries()].sort((x, y) => y[1] - x[1]).flatMap(([t, n]) => [
       h('option', { value: t, selected: s.tag === t }, `${t} (${n})`),
       h('option', { value: `-${t}`, selected: s.tag === `-${t}` }, `without ${t}`)]));
-  const from = h('input', { type: 'date', value: s.from });
-  const to = h('input', { type: 'date', value: s.to });
+  const from = dateInput({ value: s.from });
+  const to = dateInput({ value: s.to });
   const minKm = h('input', { type: 'number', step: '0.5', min: 0, value: s.minKm, placeholder: 'min' });
   const maxKm = h('input', { type: 'number', step: '0.5', min: 0, value: s.maxKm, placeholder: 'max' });
   const maxAscent = h('input', { type: 'number', step: '1', min: 0, value: s.maxAscent, placeholder: 'm/km' });
