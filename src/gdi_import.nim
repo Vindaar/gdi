@@ -9,7 +9,7 @@ import std / [os, json, math, strutils, strformat, times, tables, algorithm, set
 import gdi_db, gdi_models, gdi_metrics
 
 const
-  ImporterVersion* = "11"
+  ImporterVersion* = "12"
     ## Bump whenever derived data changes; forces a full re-import.
   BestEffortDistances* = [400.0, 1000.0, 1609.344, 3000.0, 5000.0, 10000.0,
                           15000.0, 20000.0, 21097.5, 30000.0, 40000.0, 42195.0,
@@ -50,7 +50,8 @@ proc mphToMs(v: float): float = (if v.isNaN: NaN else: v * 0.44704)
 proc parentType*(typeKey: string): string =
   ## Coarse family for filtering ("running" covers trail / treadmill / track).
   let k = typeKey
-  if "running" in k: "running"
+  if k.startsWith("moto"): "other"                # motorcycling_v2 contains "cycling"
+  elif "running" in k: "running"
   elif "cycling" in k or "biking" in k or k == "e_bike_mountain": "cycling"
   elif "swimming" in k: "swimming"
   elif k in ["walking", "hiking", "casual_walking", "speed_walking"]: "walking"

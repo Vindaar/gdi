@@ -8,6 +8,7 @@ import { healthPage } from './health.js';
 import { settingsPage } from './settings.js';
 import { routesPage, routePage } from './routes.js';
 import { comparePage } from './compare.js';
+import { blocksPage } from './blocks.js';
 
 const routes = [
   [/^#?\/?$/, () => dashboardPage, 'dashboard'],
@@ -18,6 +19,7 @@ const routes = [
   [/^#\/route\/(\d+)$/, () => routePage, 'routes'],
   [/^#\/compare$/, () => comparePage, 'activities'],
   [/^#\/analysis$/, () => analysisPage, 'analysis'],
+  [/^#\/blocks$/, () => blocksPage, 'blocks'],
   [/^#\/dashboard$/, () => dashboardPage, 'dashboard'],
   [/^#\/health$/, () => healthPage, 'health'],
   [/^#\/settings$/, () => settingsPage, 'settings'],

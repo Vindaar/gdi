@@ -142,3 +142,16 @@ pre.json { font-size: 12px; max-height: 500px; overflow: auto; background: var(-
 .dq-note { border-left: 3px solid var(--warning); padding: 8px 12px; margin-bottom: 16px; color: var(--ink-2); }
 .dq-note b { color: var(--ink); }
 .dq-note ul { margin: 4px 0 0; padding-left: 18px; }
+
+/* training blocks */
+table.blocks tr.group th { padding-top: 14px; font-size: 12px; color: var(--ink-2); text-transform: uppercase; letter-spacing: .04em; }
+table.blocks th div { font-weight: normal; font-size: 11px; }
+table.blocks th div:first-child { font-weight: 600; font-size: 13px; }
+.delta { font-size: 11px; color: var(--muted); }
+.delta-better::before { content: '▲'; font-size: 8px; margin: 0 2px 0 4px; color: var(--good); }
+.delta-worse::before { content: '▼'; font-size: 8px; margin: 0 2px 0 4px; color: var(--critical); }
+.blockmix { display: grid; grid-template-columns: 16px 1fr; gap: 6px 8px; align-items: center; margin-bottom: 8px; }
+.blockmix .zbar { margin: 0; }
+.zlist.blockzl { grid-template-columns: auto 1fr auto auto; }
+.blocks-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .blocks-layout { grid-template-columns: minmax(0, 1fr); } }

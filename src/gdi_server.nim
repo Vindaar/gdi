@@ -293,6 +293,82 @@ proc apiSampleHist(db: DbConn, body: JsonNode): JsonNode =
       else: "SELECT bpm, SUM(secs) FROM hr_hist WHERE activity_id IN (" & idList.join(",") & ") GROUP BY bpm"
     result[name] = db.queryTable(q)["rows"]
 
+proc median(xs: seq[float]): float =
+  var v = xs.filterIt(not it.isNaN)
+  if v.len == 0: return NaN
+  v.sort()
+  if v.len mod 2 == 1: v[v.len div 2] else: (v[v.len div 2 - 1] + v[v.len div 2]) / 2
+
+proc apiBlock(db: DbConn, family, fromD, toD: string): JsonNode =
+  ## Everything the block comparison shows for one date range (inclusive):
+  ## volume, zone mix, efficiency, bests, health. Duplicate uploads are left
+  ## out so volume isn't counted twice.
+  let s = db.settings()
+  let (ff, fargs) = familyFilter(family)
+  let toEnd = toD & "T99"                        # include the whole last day
+  let actWhere = &"{ff} AND a.start_local >= ? AND a.start_local <= ? AND (a.dq_flags IS NULL OR a.dq_flags NOT LIKE '%duplicate_of%')"
+  var args = fargs & @[fromD, toEnd]
+  proc jn(x: float): JsonNode = (if x.isNaN: newJNull() else: %x)
+  result = %*{"from": fromD, "to": toD}
+  # volume
+  let v = db.queryTable(&"""SELECT COUNT(*), SUM(distance), SUM(moving_duration), SUM(elev_gain),
+      SUM(training_load), MAX(distance), MAX(moving_duration)
+      FROM activities a WHERE {actWhere}""", args)["rows"][0]
+  result["volume"] = %*{"n": v[0], "distance": v[1], "moving": v[2], "ascent": v[3],
+                        "load": v[4], "longest": v[5], "longestTime": v[6]}
+  # weekly series (Monday-based weeks; the client aligns them by index)
+  result["weekly"] = db.queryTable(&"""SELECT date(a.start_local, '-' || ((strftime('%w', a.start_local) + 6) % 7) || ' days') AS week,
+      COUNT(*) AS n, SUM(distance) AS distance, SUM(moving_duration) AS moving, SUM(training_load) AS load
+      FROM activities a WHERE {actWhere} GROUP BY week ORDER BY week""", args)
+  # zone mix (moving seconds per zone)
+  var hrZ = newSeq[float](6)
+  for r in db.rows(sql(&"""SELECT {zoneCase("h.bpm", hrFloors(s))}, SUM(h.secs)
+      FROM hr_hist h JOIN activities a ON a.id = h.activity_id WHERE {actWhere} GROUP BY 1"""), args):
+    hrZ[parseInt(r[0])] = parseFloat(r[1])
+  let useGap = family == "running"
+  var pZ = newSeq[float](6)
+  for r in db.rows(sql(&"""SELECT {zoneCase("h.bucket", speedFloors(s))}, SUM({(if useGap: "h.gap_secs" else: "h.secs")})
+      FROM speed_hist h JOIN activities a ON a.id = h.activity_id WHERE {actWhere} GROUP BY 1"""), args):
+    pZ[parseInt(r[0])] = parseFloat(r[1])
+  result["hrZones"] = %hrZ
+  result["paceZones"] = %pZ
+  result["paceZonesGap"] = %useGap
+  # efficiency
+  var deltas, refs, decs, hrs, gaps: seq[float]
+  for r in db.rows(sql(&"""SELECT m.delta, m.ref_pace FROM run_model m JOIN activities a ON a.id = m.activity_id
+      WHERE {actWhere}"""), args):
+    deltas.add parseFloat(r[0]); refs.add parseFloat(r[1])
+  for r in db.rows(sql(&"""SELECT decoupling, avg_hr, avg_gap_speed, decoupling_steady FROM activities a
+      WHERE {actWhere}"""), args):
+    if r[0].len > 0 and r[3] == "1": decs.add parseFloat(r[0])
+    if r[1].len > 0: hrs.add parseFloat(r[1])
+    if r[2].len > 0: gaps.add parseFloat(r[2])
+  result["efficiency"] = %*{"nModel": deltas.len, "expDelta": jn median(deltas),
+    "refPace": jn median(refs), "nSteady": decs.len, "decoupling": jn median(decs),
+    "avgHr": jn median(hrs), "avgGap": jn median(gaps)}
+  # bests inside the block
+  var bests = newJObject()
+  for d in [1000.0, 5000.0, 10000.0, 21097.5]:
+    let b = db.queryTable(&"""SELECT e.time, a.id FROM best_efforts e JOIN activities a ON a.id = e.activity_id
+        WHERE abs(e.distance - {d}) < 0.01 AND {actWhere} ORDER BY e.time LIMIT 1""", args)["rows"]
+    bests[$int(d)] = (if b.len > 0: b[0] else: newJNull())
+  result["bests"] = bests
+  var mm = newJObject()
+  for dur in [60, 300, 1200, 3600]:
+    let b = db.queryTable(&"""SELECT m.value, a.id FROM mmp m JOIN activities a ON a.id = m.activity_id
+        WHERE m.metric = 'speed' AND m.duration = {dur} AND {actWhere} ORDER BY m.value DESC LIMIT 1""", args)["rows"]
+    mm[$dur] = (if b.len > 0: b[0] else: newJNull())
+  result["mmp"] = mm
+  # health over the same days
+  let hd = db.queryTable("""SELECT AVG(resting_hr), AVG(sleep_secs), AVG(sleep_score), AVG(avg_stress),
+      AVG(steps), AVG(weight), COUNT(*) FROM health_days WHERE date >= ? AND date <= ?""", fromD, toD)["rows"][0]
+  let gm = db.queryTable("""SELECT metric, AVG(value) FROM garmin_metrics
+      WHERE metric IN ('hrv_night', 'readiness', 'vo2max') AND date >= ? AND date <= ? GROUP BY metric""", fromD, toD)["rows"]
+  var health = %*{"restingHr": hd[0], "sleep": hd[1], "sleepScore": hd[2], "stress": hd[3],
+                  "steps": hd[4], "weight": hd[5], "days": hd[6]}
+  for r in gm: health[r[0].getStr] = r[1]
+  result["health"] = health
+
 proc apiGarminMetrics(db: DbConn, names: string): JsonNode =
   ## {metric: [[date, value, text], …]} for the requested (or all) metrics.
   result = newJObject()
@@ -411,6 +487,9 @@ proc handle*(cfg: ServerCfg, req: Request, prefix = ""): Future[void] {.async, g
                                              qp.getOrDefault("kind", "hr")))
       elif r == @["hist"] and req.reqMethod == HttpPost:
         await req.sendJson(db.apiSampleHist(parseJson(req.body)))
+      elif r == @["block"]:
+        await req.sendJson(db.apiBlock(qp.getOrDefault("family", "running"),
+                                       qp.getOrDefault("from", ""), qp.getOrDefault("to", "")))
       elif r == @["garmin-metrics"]:
         await req.sendJson(db.apiGarminMetrics(qp.getOrDefault("names", "")))
       elif r == @["health"]: await req.sendJson(db.apiHealth)
