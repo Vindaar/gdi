@@ -2,7 +2,7 @@
 
 import std / [os, times, strformat]
 import cligen
-import gdi_db, gdi_import, gdi_server, gdi_notes
+import gdi_db, gdi_import, gdi_server, gdi_notes, gdi_linknotes
 
 const
   DefaultDb       = "data/gdi.sqlite"
@@ -42,4 +42,9 @@ proc serveCmd(db = DefaultDb, activities = DefaultActivity,
 
 when isMainModule:
   dispatchMulti([importCmd, cmdName = "import"],
-                [serveCmd, cmdName = "serve"])
+                [serveCmd, cmdName = "serve"],
+                [linkNotes, cmdName = "link-notes",
+                 help = {"notes": "the diary Org file (e.g. ~/org/exercise.org)",
+                         "write": "actually write (after a timestamped backup)",
+                         "byDate": "link entries without a URL when exactly one activity exists that day",
+                         "verbose": "list entries without URL and skipped ones"}])
