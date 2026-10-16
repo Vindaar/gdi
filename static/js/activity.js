@@ -5,7 +5,7 @@ import {
   usesPace, TYPE_LABEL, css, series, zoneBlock, settingsZones, dataTable, objects,
   fmtDistanceLabel, segmented, remember, zoneOf,
   osmLayer,
-  dqIssues, FEEL_LABEL, parseTags, tagChips, TAG_SUGGESTIONS, postJson,
+  dqIssues, FEEL_LABEL, parseTags, tagChips, TAG_SUGGESTIONS, postJson, exportMenu,
 } from './util.js';
 import { runModelCard } from './runmodel.js';
 
@@ -70,7 +70,8 @@ export async function activityPage(app, id) {
     a.gear ? h('span', { class: 'muted' }, a.gear) : null,
     d.route && d.route.n >= 2 ? h('a', { href: `#/route/${d.route.route_id}`, class: 'chip', title: 'Repeated route' },
       `Route: ${d.route.n} times · #${d.route.rank} by time`) : null,
-    h('a', { href: `https://connect.garmin.com/modern/activity/${a.id}`, target: '_blank', rel: 'noopener', class: 'muted' }, 'Garmin ↗'));
+    h('a', { href: `https://connect.garmin.com/modern/activity/${a.id}`, target: '_blank', rel: 'noopener', class: 'muted' }, 'Garmin ↗'),
+    h('span', { style: 'margin-left:auto' }, exportMenu(() => [a.id])));
 
   const tiles = h('div', { class: 'tiles', style: 'margin-bottom:16px' },
     a.distance ? tile('Distance', fmtKm(a.distance), 'km') : null,

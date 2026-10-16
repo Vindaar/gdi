@@ -486,3 +486,34 @@ export const TAG_SUGGESTIONS = [
 export function tagChips(tags, onClick) {
   return parseTags(tags).map((t) => h(onClick ? 'button' : 'span', { class: 'tag', onclick: onClick ? () => onClick(t) : null }, t));
 }
+
+// ── export (GET api/export, see gdi_export.nim) ─────────────────────────────
+const EXPORT_LEVELS = [
+  ['summary', 'Summary only', 'Garmin stats, laps, splits, zones, weather + our derived numbers. No GPS, no account IDs.'],
+  ['data', '+ per-second data', 'Summary plus every sample stream (HR, pace, cadence, power, elevation…) — still without GPS.'],
+  ['full', 'Everything incl. GPS', 'The raw Garmin file as synced (JSON), or CSV / GPX with coordinates.'],
+];
+/** A dropdown that downloads the activities returned by `getIds()`. */
+export function exportMenu(getIds, label = '⤓ Export') {
+  const st = remember('export', { level: 'data', format: 'json' });
+  const box = h('details', { class: 'export-menu' });
+  const body = h('div', { class: 'export-pop' });
+  function draw() {
+    const s = st.get();
+    const fmts = [['json', 'JSON'], ['csv', s.level === 'summary' ? 'CSV (one row each)' : 'CSV (samples)'], ...(s.level === 'full' ? [['gpx', 'GPX track']] : [])];
+    if (!fmts.some(([f]) => f === s.format)) st.set({ format: 'json' });
+    const ids = getIds();
+    const multi = ids.length > 1 && !(st.get().format === 'csv' && s.level === 'summary');
+    body.replaceChildren(
+      h('div', { class: 'muted', style: 'font-size:12px;margin-bottom:6px' }, ids.length === 1 ? '1 activity' : `${ids.length} activities${multi ? ' → zip, one file each' : ''}`),
+      ...EXPORT_LEVELS.map(([v, l, note]) => h('label', { class: 'export-opt', title: note },
+        h('input', { type: 'radio', name: 'exp-level', checked: s.level === v, onchange: () => { st.set({ level: v }); draw(); } }),
+        h('span', {}, h('b', {}, l), h('div', { class: 'muted' }, note)))),
+      h('div', { style: 'margin:8px 0 4px' }, segmented(fmts, st.get().format, (v) => { st.set({ format: v }); draw(); })),
+      h('a', { class: 'button primary', href: ids.length ? `api/export?ids=${ids.join(',')}&level=${s.level}&format=${st.get().format}` : null,
+        download: '', onclick: () => { box.open = false; } }, 'Download'));
+  }
+  box.append(h('summary', { class: 'button' }, label), body);
+  box.addEventListener('toggle', () => { if (box.open) draw(); });
+  return box;
+}

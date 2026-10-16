@@ -8,7 +8,7 @@ import std / [asynchttpserver, asyncdispatch, json, strutils, strformat, os,
               math, tables, times, base64, uri, sequtils, algorithm]
 import db_connector / sqlite3
 import zippy
-import gdi_db, gdi_import, gdi_notes
+import gdi_db, gdi_import, gdi_notes, gdi_export
 
 type
   ServerCfg* = object
@@ -507,6 +507,18 @@ proc handle*(cfg: ServerCfg, req: Request, prefix = ""): Future[void] {.async, g
         else:
           db.saveNote(cfg.notesFile, parseInt(r[1]), tags, b{"note"}.getStr)
           await req.sendJson(db.queryTable("SELECT tags, note FROM activity_notes WHERE activity_id = ?", r[1]).firstRowObj)
+      elif r == @["export"]:
+        var ids: seq[int]
+        for x in qp.getOrDefault("ids", "").split(','):
+          if x.strip.len > 0: ids.add parseInt(x.strip)
+        if ids.len == 0:
+          await req.sendJson(%*{"error": "no ids"}, Http400)
+        else:
+          let f = db.exportActivities(cfg.activityDir, ids, qp.getOrDefault("level", "summary"),
+                                      qp.getOrDefault("format", "json"))
+          await req.send(Http200, f.body, f.mime,
+                         @[("Content-Disposition", "attachment; filename=\"" & f.name & "\""),
+                           ("Cache-Control", "no-store")])
       elif r == @["tags"]:
         var arr = newJArray()
         var ct = db.allTags()

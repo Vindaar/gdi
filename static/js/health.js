@@ -2,7 +2,7 @@
 // shared time axis), plus an intraday view for a selected day.
 import {
   api, objects, h, fmtDur, fmtNum, remember, echart, chartTheme, baseAxis, baseTooltip,
-  series, segmented, tile, css, blueRamp,
+  series, segmented, tile, css, blueRamp, fmtKm, TYPE_LABEL, dataTable, fmtSpeedFor, speedUnit,
 } from './util.js';
 import { withHrv, baselines, normalCard, unusualSignals, rollingBaseline, fmtClock } from './baselines.js';
 
@@ -37,7 +37,22 @@ export async function healthPage(app) {
   const charts = [];
   const grid = h('div', { class: 'grid cols-2' });
   const tilesEl = h('div', { class: 'tiles', style: 'margin-bottom:16px' });
-  const dayBox = h('div', { class: 'card', style: 'margin-top:16px' });
+  const dayBox = h('div', { class: 'card', style: 'margin-top:16px;scroll-margin-top:130px' });
+  const dayBar = h('div', { class: 'day-bar' });      // sticky: which day is selected
+  let selectedDay = null;
+  const acts = objects(await api('activities').catch(() => ({ cols: [], rows: [] })));
+  const actsOn = (date) => acts.filter((a) => a.start_local.slice(0, 10) === date).sort((a, b) => (a.start_local < b.start_local ? -1 : 1));
+  /** vertical marker for the selected day in every daily chart */
+  function markSelected() {
+    const th = chartTheme();
+    for (const c of charts) {
+      try {
+        c.setOption({ series: [{ markLine: selectedDay ? { silent: true, symbol: 'none', animation: false,
+          lineStyle: { color: th.ink, width: 1.5, type: 'solid', opacity: 0.55 }, label: { show: false },
+          data: [{ xAxis: selectedDay }] } : { data: [] } }] });
+      } catch {}
+    }
+  }
   const controls = h('div', { class: 'filters' });
 
   const METRICS = [
@@ -193,12 +208,15 @@ export async function healthPage(app) {
       c.setOption({ animation: false, xAxis: { type: 'category', data: dates, ...baseAxis(th), splitLine: { show: false } },
         yAxis: { type: 'value', scale: true, ...baseAxis(th) }, dataZoom: [{ type: 'inside' }], ...opt });
     }
+    markSelected();
   }
 
   let dayChart = null;
   async function showDay(date, scroll = true) {
     const j = await api(`health/${date}`);
     if (!j) return;
+    selectedDay = date;
+    markSelected();
     dayChart?.dispose();
     const el = h('div', { class: 'chart tall' });
     const sl = j.sleep?.dailySleepDTO || {};
@@ -213,18 +231,39 @@ export async function healthPage(app) {
       const next = days.find((d) => d >= want) ?? days[days.length - 1];
       showDay(next, false);
     });
-    const nav = h('div', { class: 'filters', style: 'margin-bottom:12px' },
-      h('h2', { style: 'margin:0' }, 'Day detail'),
+    const longDate = new Date(date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const dayActs = actsOn(date);
+    const actLinks = dayActs.map((a) => h('a', { class: 'tag', href: `#/activity/${a.id}`, title: `${fmtKm(a.distance)} km · ${fmtDur(a.moving_duration)}` },
+      `${a.start_local.slice(11, 16)} ${TYPE_LABEL(a.type_key)}${a.distance ? ` ${fmtKm(a.distance, 1)} km` : ''}`));
+    dayBar.replaceChildren(
+      h('span', { class: 'day-bar-label' }, 'Selected day'),
       h('button', { onclick: () => i > 0 && showDay(days[i - 1], false), disabled: i <= 0, title: 'previous day' }, '‹'),
       picker,
       h('button', { onclick: () => i < days.length - 1 && showDay(days[i + 1], false), disabled: i >= days.length - 1, title: 'next day' }, '›'),
-      h('span', { class: 'muted' }, new Date(date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long' })),
-      h('span', { class: 'muted' }, '· or click a day in any chart above'));
-    dayBox.replaceChildren(nav,
+      h('b', {}, longDate),
+      h('span', { class: 'muted' }, `sleep ${fmtDur(sl.sleepTimeSeconds)} · RHR ${fmtNum(j.summary?.restingHeartRate)} · ${fmtNum(j.summary?.totalSteps)} steps`),
+      ...(actLinks.length ? actLinks : [h('span', { class: 'muted' }, 'no activities')]),
+      h('a', { href: '#', class: 'muted', style: 'margin-left:auto', onclick: (e) => { e.preventDefault(); dayBox.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, 'Day detail ↓'));
+    const actTable = dayActs.length ? h('div', { style: 'margin-bottom:12px' }, h('h3', {}, `Activities (${dayActs.length})`), dataTable(dayActs, [
+      { key: 'start_local', label: 'Start', left: true, fmt: (v) => v.slice(11, 16), link: (r) => `#/activity/${r.id}` },
+      { key: 'name', label: 'Name', left: true, cls: 'name', link: (r) => `#/activity/${r.id}` },
+      { key: 'type_key', label: 'Type', left: true, fmt: TYPE_LABEL },
+      { key: 'distance', label: 'km', fmt: (v) => (v ? fmtKm(v) : '–') },
+      { key: 'moving_duration', label: 'Moving', fmt: fmtDur },
+      { key: 'avg_moving_speed', label: 'Pace/Speed', fmt: (v, r) => (r.distance ? `${fmtSpeedFor(r.parent_type, v)} ${speedUnit(r.parent_type)}` : '–') },
+      { key: 'avg_hr', label: 'HR', fmt: (v) => fmtNum(v) },
+      { key: 'max_hr', label: 'Max', fmt: (v) => fmtNum(v) },
+      { key: 'elev_gain', label: '↑ m', fmt: (v) => fmtNum(v) },
+      { key: 'training_load', label: 'Load', fmt: (v) => fmtNum(v) },
+      { key: 'aerobic_te', label: 'TE', fmt: (v) => fmtNum(v, 1) },
+      { key: 'calories', label: 'kcal', fmt: (v) => fmtNum(v) },
+    ], { sortKey: 'start_local', sortDesc: false })) : h('div', { class: 'muted', style: 'margin-bottom:12px' }, 'No activities on this day.');
+    dayBox.replaceChildren(h('h2', {}, `Day detail — ${longDate}`),
       h('div', { class: 'tiles', style: 'margin-bottom:12px' },
         tile('Sleep', fmtDur(sl.sleepTimeSeconds)), tile('Sleep score', fmtNum(sl.sleepScores?.overall?.value)),
         tile('Resting HR', fmtNum(j.summary?.restingHeartRate), 'bpm'), tile('Steps', fmtNum(j.summary?.totalSteps)),
         tile('Stress avg', fmtNum(j.summary?.averageStressLevel)), tile('Body Battery', `${fmtNum(j.summary?.bodyBatteryLowestValue)}–${fmtNum(j.summary?.bodyBatteryHighestValue)}`)),
+      actTable,
       h('div', { class: 'muted', style: 'font-size:12px' }, 'Heart rate, stress and Body Battery through the day (one panel each).'), el);
     dayChart = echart(el);
     const th = chartTheme();
@@ -254,7 +293,7 @@ export async function healthPage(app) {
     h('label', {}, 'Range', segmented([['30', '1 mo'], ['90', '3 mo'], ['365', '1 y'], ['730', '2 y'], ['all', 'All']], s.range, (v) => { state.set({ range: v }); draw(); })),
     h('label', {}, 'Daily values', segmented([[true, '+ 7-day average'], [false, 'raw only']], s.smooth, (v) => { state.set({ smooth: v }); draw(); })),
     h('span', { class: 'muted' }, 'Click any day to see its intraday detail.'));
-  app.replaceChildren(h('div', { class: 'page-head' }, h('h1', {}, 'Health')), controls, tilesEl, normalBox, grid, dayBox);
+  app.replaceChildren(h('div', { class: 'page-head' }, h('h1', {}, 'Health')), controls, dayBar, tilesEl, normalBox, grid, dayBox);
   draw();
   if (all.length) showDay(all[all.length - 1].date, false).catch(() => {});
   return () => { charts.forEach((c) => c.dispose()); dayChart?.dispose(); };

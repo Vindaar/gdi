@@ -1,7 +1,7 @@
 // Activity list: filter row + sortable table over all activities.
 import {
   api, objects, h, dataTable, fmtDur, fmtKm, fmtNum, fmtDate, fmtSpeedFor, speedUnit,
-  FAMILIES, TYPE_LABEL, remember, dqBadge, FEEL_LABEL, parseTags, tagChips,
+  FAMILIES, TYPE_LABEL, remember, dqBadge, FEEL_LABEL, parseTags, tagChips, exportMenu,
 } from './util.js';
 
 const state = remember('activities', {
@@ -54,7 +54,15 @@ export async function activitiesPage(app) {
   // selection for the compare view (2–4 activities)
   const selected = new Set();
   const compareBtn = h('button', { class: 'primary', hidden: true, onclick: () => { location.hash = `#/compare?ids=${[...selected].join(',')}`; } });
+  let shown = [];     // rows after filtering (for "select all")
+  const exportBox = exportMenu(() => [...selected]);
+  const selAllBtn = h('button', { onclick: () => { for (const r of shown) selected.add(r.id); table.update(shown); updateCompare(); } });
+  const clearBtn = h('button', { hidden: true, onclick: () => { selected.clear(); table.update(shown); updateCompare(); } }, 'Clear selection');
   const updateCompare = () => {
+    exportBox.hidden = selected.size === 0;
+    clearBtn.hidden = selected.size === 0;
+    selAllBtn.textContent = `Select all ${shown.length} shown`;
+    exportBox.querySelector('summary').textContent = `⤓ Export ${selected.size} selected`;
     compareBtn.hidden = selected.size === 0;
     compareBtn.disabled = selected.size < 2 || selected.size > 4;
     compareBtn.textContent = selected.size > 4 ? 'Compare (max. 4)' : `Compare ${selected.size} selected`;
@@ -115,7 +123,9 @@ export async function activitiesPage(app) {
       (f.maxKm === '' || (a.distance || 0) <= f.maxKm * 1000) &&
       (f.maxAscent === '' || (a.ascent_per_km != null && a.ascent_per_km <= +f.maxAscent)) &&
       (!f.hideFlagged || !a.dq_flags));
+    shown = rows;
     table.update(rows);
+    updateCompare();
     const sum = (k) => rows.reduce((acc, r) => acc + (r[k] || 0), 0);
     summary.replaceChildren(
       tileOf('Activities', rows.length),
@@ -130,6 +140,7 @@ export async function activitiesPage(app) {
   for (const el of [q, minKm, maxKm, maxAscent]) el.addEventListener('input', apply);
   apply();
 
-  app.replaceChildren(h('div', { class: 'page-head' }, h('h1', {}, 'Activities'), compareBtn), filters, summary,
+  app.replaceChildren(h('div', { class: 'page-head' }, h('h1', {}, 'Activities'),
+    h('span', { style: 'display:flex;gap:8px;margin-left:auto;flex-wrap:wrap' }, selAllBtn, clearBtn, compareBtn, exportBox)), filters, summary,
     h('div', { class: 'card' }, table));
 }
