@@ -115,7 +115,8 @@ METRICS.samples = {
   gap:  { label: 'Grade-adjusted pace', unit: 'pace', kind: 'gap', pace: true },
 };
 
-const GROUPS = [['none', 'nothing'], ['year', 'year'], ['type', 'activity type'], ['gear', 'gear'], ['temp', 'temperature band']];
+// discrete colour groups; stored as state.group, while state.color holds a metric
+const GROUPS = [['year', 'year'], ['type', 'activity type'], ['gear', 'gear (equipment)'], ['temp', 'temperature band']];
 
 const DEFAULTS = {
   level: 'segments', family: 'running', type: '', x: 'hr', y: 'pace', y2: '', color: '', group: 'year',
@@ -223,13 +224,28 @@ export async function analysisPage(app) {
         last.append(o);
       }
       const el = h('select', {}, kids);
-      el.addEventListener('change', () => { state.set({ [key]: el.value }); onchange(); });
+      el.addEventListener('change', () => { if (key) state.set({ [key]: el.value }); onchange(); });
       return el;
     };
     const types = [...new Set(data.map((r) => r.type_key))].sort();
     const metricOpts = Object.entries(M).map(([k, m]) =>
       s.level !== 'segments' ? [k, m.label] : k.startsWith('a_') ? [k, m.label.replace(/^Activity: /, ''), 'Whole activity'] : [k, m.label, 'This km']);
     const st = state.get();
+    /** one "Colour by" control: nothing, a group (discrete) or a metric (continuous) */
+    const colourSel = (withMetrics, groupsBlocked) => {
+      const cur = withMetrics && st.color ? st.color : st.group !== 'none' ? `g:${st.group}` : '';
+      const opts = [['', 'nothing'],
+        ...GROUPS.map(([k, l]) => [`g:${k}`, l, 'Groups (discrete colours)']),
+        ...(withMetrics ? metricOpts.map(([k, l, g]) => [k, l, g ? `Metric (continuous): ${g.toLowerCase()}` : 'Metric (continuous)']) : [])];
+      const el = sel(null, opts, cur, () => {});
+      if (groupsBlocked) for (const o of el.querySelectorAll('option[value^="g:"]')) o.disabled = true;
+      el.addEventListener('change', () => {
+        const v = el.value;
+        state.set(v === '' ? { group: 'none', color: '' } : v.startsWith('g:') ? { group: v.slice(2), color: '' } : { group: 'none', color: v });
+        buildControls(); draw();
+      });
+      return el;
+    };
     const modeSel = h('label', {}, 'Chart', segmented([['scatter', 'Scatter'], ['hist', 'Histogram']], st.mode, (v) => {
       state.set({ mode: v });
       if (v !== 'hist' && state.get().level === 'samples') state.set({ level: 'segments' });
@@ -251,7 +267,7 @@ export async function analysisPage(app) {
         h('label', {}, 'Show', segmented([[false, 'totals'], [true, '% within group']], st.norm, (v) => { state.set({ norm: v }); draw(); })),
       ].filter(Boolean));
       controls2.replaceChildren(
-        h('label', {}, 'Group by', sel('group', GROUPS, st.group, draw)));
+        h('label', {}, 'Colour by', colourSel(false, null)));
       buildFilters(st, sel, types);
       return;
     }
@@ -262,15 +278,11 @@ export async function analysisPage(app) {
       h('label', {}, 'X', sel('x', metricOpts, st.x, draw)),
       h('label', {}, 'Y', sel('y', metricOpts, st.y, () => { buildControls(); draw(); })),
       h('label', {}, 'Second Y', sel('y2', [['', '—'], ...metricOpts], st.y2, () => { buildControls(); draw(); })),
-      h('label', {}, 'Colour by', sel('color', [['', 'group (below)'], ...metricOpts], st.color, () => { buildControls(); draw(); })),
     );
-    const groupSel = sel('group', GROUPS, st.group, draw);
     const overlay = st.y2 && st.y2 !== st.y && M[st.y2].unit === M[st.y].unit;
-    const groupBlocked = st.color ? 'Colour already encodes a metric'
-      : overlay ? 'Colour distinguishes the two overlaid metrics' : null;
-    if (groupBlocked) groupSel.disabled = true;
+    const groupsBlocked = overlay ? 'Groups are unavailable while two same-unit metrics are overlaid: colour distinguishes the two metrics' : null;
     controls2.replaceChildren(
-      h('label', { title: groupBlocked }, 'Group by', groupSel),
+      h('label', { title: groupsBlocked }, 'Colour by', colourSel(true, groupsBlocked)),
       h('label', {}, 'Trend', segmented([[true, 'binned median'], [false, 'off']], st.trend, (v) => { state.set({ trend: v }); draw(); })),
     );
     buildFilters(st, sel, types);
