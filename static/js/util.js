@@ -116,7 +116,8 @@ export function tile(label, value, unit = '') {
 
 /**
  * Sortable, paged table.
- * columns: [{key, label, fmt?(v,row), sortVal?(row), left?, cls?, link?(row)}]
+ * columns: [{key, label, fmt?(v,row), sortVal?(row), left?, cls?, link?(row), after?(row)}]
+ *   (`after` adds an unlinked element behind the cell content, e.g. a badge)
  */
 const PAGE_SIZES = [25, 50, 100, 250, 500, 0];   // 0 = all
 
@@ -159,7 +160,9 @@ export function dataTable(rows, columns, { sortKey, sortDesc = true, pageSize = 
     const tbody = h('tbody', {}, slice.map((r, i) => h('tr', {}, columns.map((c) => {
       const raw = c.fmt ? c.fmt(r[c.key], r, page * per + i) : r[c.key] ?? '–';
       const content = c.link ? h('a', { href: c.link(r) }, raw) : raw;
-      return h('td', { class: [c.left ? 'l' : '', c.cls || ''].join(' '), title: c.title ? c.title(r) : null }, content);
+      const extra = c.after ? c.after(r) : null;
+      return h('td', { class: [c.left ? 'l' : '', c.cls || ''].join(' '), title: c.title ? c.title(r) : null },
+        content, extra ? ' ' : null, extra);
     }))));
     wrap.replaceChildren(h('table', { class: 'data' }, thead, tbody));
     pager.replaceChildren(...[
@@ -444,4 +447,28 @@ export function osmLayer() {
     referrerPolicy: 'origin',
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   });
+}
+
+// ── data quality ─────────────────────────────────────────────────────────────
+// `dq_flags` (JSON, set by the importer) → readable issues. Records and curves
+// already use glitch-cleaned distance; these say what was wrong with the raw data.
+export function dqIssues(flags) {
+  if (!flags) return [];
+  let f;
+  try { f = typeof flags === 'string' ? JSON.parse(flags) : flags; } catch { return []; }
+  const out = [];
+  if (f.duplicate_of) out.push(`Probably a duplicate upload of activity ${f.duplicate_of}`);
+  if (f.distance_mismatch) out.push(`Distance stream claims ${f.distance_mismatch}× the summary distance — excluded from records`);
+  if (f.gps_jumps) out.push(`GPS jumps: ${fmtNum(f.removed_m)} m of implausible distance ignored for records and curves`);
+  if (f.implausible_speed_s) out.push(`${fmtDur(f.implausible_speed_s)} faster than plausible for this sport — vehicle, or mislabelled activity?`);
+  if (f.stride_glitch_s) out.push(`${fmtDur(f.stride_glitch_s)} with impossible stride length (speed vs cadence) masked`);
+  if (f.sparse_sampling_s) out.push(`Sparse recording (a point every ~${f.sparse_sampling_s} s) — short efforts unreliable`);
+  if (f.hr_cadence_lock_s) out.push(`Heart rate locked onto cadence for ${fmtDur(f.hr_cadence_lock_s)} (optical HR artefact)`);
+  if (f.hr_missing_pct) out.push(`Heart rate missing for ${f.hr_missing_pct} % of moving time`);
+  return out;
+}
+
+export function dqBadge(flags) {
+  const issues = dqIssues(flags);
+  return issues.length ? h('span', { class: 'dq-badge', title: issues.join('\n'), 'aria-label': 'data quality issues' }, '⚠') : null;
 }

@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS activities (
   decoupling       REAL,              -- % efficiency loss 2nd vs 1st half (see gdi_import)
   decoupling_steady INTEGER,          -- 1 if the run was steady enough to interpret it
   pace_cv          REAL,              -- variability of 1-min GAP (or power) averages
+  dq_flags         TEXT,              -- JSON object of data-quality issues (see gdi_import), NULL if clean
   avg_hr           REAL,
   max_hr           REAL,
   min_hr           REAL,
@@ -242,7 +243,8 @@ proc openDb*(path: string): DbConn =
   var cols: seq[string]
   for r in result.rows(sql"PRAGMA table_info(activities)"): cols.add r[1]
   for (col, typ) in [("gap_source", "TEXT"), ("decoupling", "REAL"),
-                     ("decoupling_steady", "INTEGER"), ("pace_cv", "REAL")]:
+                     ("decoupling_steady", "INTEGER"), ("pace_cv", "REAL"),
+                     ("dq_flags", "TEXT")]:
     if col notin cols:
       result.exec(sql("ALTER TABLE activities ADD COLUMN " & col & " " & typ))
   var hcols: seq[string]

@@ -9,7 +9,7 @@ import std / [os, json, math, strutils, strformat, times, tables, algorithm, set
 import gdi_db, gdi_models, gdi_metrics
 
 const
-  ImporterVersion* = "10"
+  ImporterVersion* = "11"
     ## Bump whenever derived data changes; forces a full re-import.
   BestEffortDistances* = [400.0, 1000.0, 1609.344, 3000.0, 5000.0, 10000.0,
                           15000.0, 20000.0, 21097.5, 30000.0, 40000.0, 42195.0,
@@ -144,13 +144,100 @@ proc forwardFilled(xs: seq[float]): seq[float] =
   for i in 0 ..< result.len:
     if result[i].isNaN: result[i] = first else: break
 
+proc maxPlausibleSpeed*(family: string): float =
+  ## Fastest sample speed (m/s) we believe for a sport; anything above is a
+  ## GPS or recording glitch. Generous on purpose: running 10 m/s (own
+  ## sprints peak at 8.4 m/s).
+  case family
+  of "running": 10.0
+  of "walking": 5.0
+  of "cycling": 30.0
+  else: 30.0
+
+proc strideGlitches*(family: string, speed, cad: seq[float]): seq[bool] =
+  ## Running samples whose implied stride (speed / steps per second) is above
+  ## 2.6 m: no real step, typically a GPS jump at the start.
+  result = newSeq[bool](speed.len)
+  if family == "running" and cad.len == speed.len:
+    for i in 0 ..< speed.len:
+      if not speed[i].isNaN and not cad[i].isNaN and cad[i] > 60:
+        result[i] = speed[i] / (cad[i] / 60) > 2.6
+
+type CleanDistance* = object
+  cum*: seq[float]          ## cleaned cumulative distance from 0 (m), same length as t
+  jumps*: int               ## distance steps replaced as implausible
+  removed*: float           ## m dropped by those replacements
+  ok*: bool                 ## false if the stream can't be used at all
+
+proc cleanDistance*(t, distRaw, speed: seq[float], bad: seq[bool],
+                    family: string, window = 5.0): CleanDistance =
+  ## Cumulative distance with recording glitches removed. Per-second distance
+  ## is lumpy (0 m, then 6 m), so steps aren't judged alone: an allowance of
+  ## (1.5 × the watch's own speed + 1 m/s) · dt — capped at
+  ## `maxPlausibleSpeed`; that cap alone where there is no (or a zero) speed
+  ## reading and 1 m/s where a reading is itself implausible — accrues over at most
+  ## `window` seconds,
+  ## and only distance beyond it is dropped. Samples flagged in `bad` add
+  ## nothing.
+  let n = t.len
+  if n < 2 or distRaw.len != n: return
+  let d = forwardFilled(distRaw)
+  if d[0].isNaN: return
+  let cap = maxPlausibleSpeed(family)
+  result.cum = newSeq[float](n)
+  result.ok = true
+  var avail = 0.0
+  for i in 1 ..< n:
+    let dt = t[i] - t[i-1]
+    var step = max(0.0, d[i] - d[i-1])
+    if dt <= 0 or (bad.len == n and (bad[i] or bad[i-1])):
+      result.removed += step
+      step = 0
+    else:
+      var rate = cap
+      if speed.len == n:
+        let refS = max(if speed[i].isNaN: 0.0 else: speed[i],
+                       if speed[i-1].isNaN: 0.0 else: speed[i-1])
+        # an implausible speed reading is a glitch itself: allow walking pace.
+        # A zero reading while distance grows is a stale speed stream (seen
+        # for minutes in Garmin walks), so only the cap applies there.
+        rate = (if refS > cap: 1.0
+                elif refS < 0.2: cap
+                else: min(cap, 1.5 * refS + 1.0))
+      avail = min(min(avail + rate * dt, rate * max(window, dt)), cap * dt)
+      if step > avail:
+        result.removed += step - avail
+        step = avail
+        inc result.jumps
+      avail -= step
+    result.cum[i] = result.cum[i-1] + step
+
+proc hrCadenceLock*(hr, cad, t: seq[float], minRun = 120.0): float =
+  ## Seconds in stretches of at least `minRun` s where heart rate sits within
+  ## 3 bpm of the step rate — the classic optical-HR "cadence lock".
+  if hr.len != t.len or cad.len != t.len: return 0
+  var runStart = -1.0
+  var last = 0.0
+  for i in 0 ..< t.len:
+    let locked = not hr[i].isNaN and not cad[i].isNaN and cad[i] > 130 and
+                 abs(hr[i] - cad[i]) <= 3
+    if locked:
+      if runStart < 0: runStart = t[i]
+      last = t[i]
+    elif runStart >= 0 and (i == 0 or t[i] - last > 10):
+      if last - runStart >= minRun: result += last - runStart
+      runStart = -1
+  if runStart >= 0 and last - runStart >= minRun: result += last - runStart
+
 type BestEffort* = object
   distance*, time*, startT*, startDist*, avgHr*, elevGain*: float
 
 proc bestEfforts*(t, distRaw, hr, elev: seq[float],
-                  distances: openArray[float]): seq[BestEffort] =
+                  distances: openArray[float], minSamples = 8): seq[BestEffort] =
   ## Fastest elapsed time for each target distance, via two pointers over
   ## the cumulative distance with linear interpolation of the end point.
+  ## Windows spanning fewer than `minSamples` samples are skipped: in sparse
+  ## old recordings (a point every 10–60 s) they hinge on single readings.
   let n = t.len
   if n < 2 or distRaw.len != n: return
   var dist = forwardFilled(distRaw)
@@ -185,7 +272,7 @@ proc bestEfforts*(t, distRaw, hr, elev: seq[float],
         let f = (target - dist[j-1]) / (dist[j] - dist[j-1])
         tEnd = t[j-1] + f * (t[j] - t[j-1])
       let dtime = tEnd - t[i]
-      if dtime > 0 and dtime < best.time:
+      if dtime > 0 and dtime < best.time and j - i >= minSamples:
         let ht = hrT[j] - hrT[i]
         best = BestEffort(distance: D, time: dtime, startT: t[i],
                           startDist: dist[i] - dist[0],
@@ -338,6 +425,8 @@ proc median5(xs: seq[float]): seq[float] =
 proc meanMax*(t, cum: seq[float], durations: openArray[int]): seq[(int, float, float)] =
   ## Best average rate over each duration: max over windows [t_i, t_i + D] of
   ## (cum(t_i + D) − cum(t_i)) / D, end point linearly interpolated.
+  ## Windows need min(8, D/2) samples, so sparse recordings don't produce
+  ## short-duration bests from one or two readings.
   ## Returns (duration, value, start_t).
   let n = t.len
   if n < 2: return
@@ -357,6 +446,7 @@ proc meanMax*(t, cum: seq[float], durations: openArray[int]): seq[(int, float, f
       if j > 0 and t[j] > t[j-1]:
         let f = (target - t[j-1]) / (t[j] - t[j-1])
         c = cum[j-1] + f * (cum[j] - cum[j-1])
+      if j - i < min(8, D div 2): continue
       let v = (c - cum[i]) / d
       if v > best: best = v; bestStart = t[i]
     if best > 0: result.add (D, best, bestStart)
@@ -507,6 +597,53 @@ proc importActivity*(db: DbConn, j: JsonNode) =
     let base = s.num("averageMovingSpeed")
     avgGap = (if not base.isNaN and base > 0 and not ratio.isNaN: base * ratio
               else: weightedMean(st.get("directGradeAdjustedSpeed"), wts))
+  # data quality: glitch-cleaned distance plus flags for what looks wrong
+  let family = parentType(typeKey)
+  let bad = strideGlitches(family, st.get("directSpeed"), st.get("directDoubleCadence"))
+  let clean = cleanDistance(st.get("t"), st.get("sumDistance"), st.get("directSpeed"), bad, family)
+  var dq = newJObject()
+  var distUsable = clean.ok
+  if clean.ok:
+    if clean.removed > max(50.0, 0.005 * clean.cum[^1]):
+      dq["gps_jumps"] = %clean.jumps
+      dq["removed_m"] = %round(clean.removed)
+    let tot = clean.cum[^1]
+    if not dist.isNaN and dist > 500 and tot > 1.25 * dist:
+      # the stream claims far more distance than the summary even after
+      # cleaning: don't trust it for records at all
+      dq["distance_mismatch"] = %round(tot / dist, 2)
+      distUsable = false
+  block:
+    let t = st.get("t")
+    var badS = 0.0
+    for i in 1 ..< min(bad.len, t.len):
+      if bad[i]: badS += t[i] - t[i-1]
+    if badS > 0: dq["stride_glitch_s"] = %round(badS)
+    let spd = st.get("directSpeed")
+    if spd.len == t.len:
+      # watch-reported speed beyond the sport's limit: usually a mislabelled
+      # activity (a train ride recorded as a walk) rather than a glitch
+      var fastS = 0.0
+      let cap = maxPlausibleSpeed(family)
+      for i in 1 ..< t.len:
+        if not spd[i].isNaN and spd[i] > cap: fastS += min(t[i] - t[i-1], MaxGapS)
+      if fastS >= 30: dq["implausible_speed_s"] = %round(fastS)
+    if t.len > 10:
+      var dts: seq[float]
+      for i in 1 ..< t.len: dts.add t[i] - t[i-1]
+      dts.sort()
+      let med = dts[dts.len div 2]
+      if med > 5: dq["sparse_sampling_s"] = %round(med)
+    let hrS = st.get("directHeartRate")
+    if hrS.len == wts.len:
+      var have, miss = 0.0
+      for i in 0 ..< wts.len:
+        if wts[i] <= 0: continue
+        if hrS[i].isNaN or hrS[i] <= 0: miss += wts[i] else: have += wts[i]
+      if have > 0 and miss / (have + miss) > 0.1:
+        dq["hr_missing_pct"] = %round(100 * miss / (have + miss))
+    let lockS = hrCadenceLock(hrS, st.get("directDoubleCadence"), t)
+    if lockS > 0: dq["hr_cadence_lock_s"] = %round(lockS)
   var meta = newJObject()
   for k, v in j:
     if k notin ["details", "polyline"]: meta[k] = v
@@ -538,6 +675,7 @@ proc importActivity*(db: DbConn, j: JsonNode) =
     ("decoupling", jf decPct),
     ("decoupling_steady", (if decPct.isNaN: newJNull() else: %int(decSteady))),
     ("pace_cv", jf decCv),
+    ("dq_flags", (if dq.len == 0: newJNull() else: %($dq))),
     ("avg_hr", jf s.num("averageHR")),
     ("max_hr", jf s.num("maxHR")),
     ("min_hr", jf s.num("minHR")),
@@ -641,42 +779,15 @@ proc importActivity*(db: DbConn, j: JsonNode) =
       ("avg_power", jf sg.avgPower), ("ascent", jf sg.ascent),
       ("descent", jf sg.descent), ("grade", jf sg.grade)])
 
-  # mean-maximal speed (from distance), GAP speed and power by duration
+  # mean-maximal speed (from cleaned distance), GAP speed and power by duration
   block:
     let t = st.get("t")
     var sources: seq[(string, seq[float])]
-    # implausible running samples: implied stride (speed / steps per second)
-    # above 2.6 m is no real step — typically a GPS jump at the start
-    let spd = st.get("directSpeed")
-    let cad = st.get("directDoubleCadence")
-    var bad = newSeq[bool](t.len)
-    if parentType(typeKey) == "running" and spd.len == t.len and cad.len == t.len:
-      for i in 0 ..< t.len:
-        if not spd[i].isNaN and not cad[i].isNaN and cad[i] > 60:
-          bad[i] = spd[i] / (cad[i] / 60) > 2.6
     proc masked(xs: seq[float]): seq[float] =
       result = xs
-      for i in 0 ..< result.len:
+      for i in 0 ..< min(result.len, bad.len):
         if bad[i]: result[i] = NaN
-    let dist = st.get("sumDistance")
-    if dist.len == t.len and t.len > 1:
-      var d = forwardFilled(dist)
-      if not d[0].isNaN:
-        for i in 1 ..< d.len: d[i] = max(d[i], d[i-1])
-        # distance is cumulative already, but zero out paused gaps like the
-        # others, and replace GPS jumps (step speed > 1.5 × the watch's own
-        # speed + 1 m/s) by speed × dt
-        let sp = st.get("directSpeed")
-        var cum = newSeq[float](t.len)
-        for i in 1 ..< t.len:
-          let dt = t[i] - t[i-1]
-          var inc = d[i] - d[i-1]
-          if dt <= 0 or dt > MaxGapS or bad[i] or bad[i-1]: inc = 0
-          elif sp.len == t.len:
-            let ref0 = max(if sp[i].isNaN: 0.0 else: sp[i], if sp[i-1].isNaN: 0.0 else: sp[i-1])
-            if inc / dt > 1.5 * ref0 + 1.0: inc = ref0 * dt
-          cum[i] = cum[i-1] + inc
-        sources.add ("speed", cum)
+    if distUsable: sources.add ("speed", clean.cum)
     let gapS = st.get("directGradeAdjustedSpeed")
     if gapS.len == t.len: sources.add ("gap", cumulative(t, median5(masked(gapS))))
     let pw = st.get("directPower")
@@ -686,10 +797,9 @@ proc importActivity*(db: DbConn, j: JsonNode) =
         db.insertRow("mmp", @[("activity_id", %id), ("metric", %metric),
                               ("duration", %D), ("value", %v), ("start_t", %s0)])
 
-  # best efforts
-  let sd = st.get("sumDistance")
-  if sd.len > 1:
-    for be in bestEfforts(st.get("t"), sd, hr, st.get("directElevation"),
+  # best efforts (on the cleaned distance)
+  if distUsable:
+    for be in bestEfforts(st.get("t"), clean.cum, hr, st.get("directElevation"),
                           BestEffortDistances):
       db.insertRow("best_efforts", @[
         ("activity_id", %id), ("distance", %be.distance), ("time", %be.time),
@@ -835,6 +945,30 @@ proc scanDir(db: DbConn, dir, kind: string, stats: var ImportStats,
       inc stats.removed
   db.exec(sql"COMMIT")
 
+proc markDuplicates*(db: DbConn) =
+  ## The same workout uploaded twice (2016/17: Endomondo plus a second
+  ## source): same sport, starts within 10 min, durations within 20 %. The
+  ## weaker copy (no HR, then fewer samples) gets `duplicate_of` in its
+  ## `dq_flags`; rebuilt from scratch on every call.
+  db.exec(sql"""UPDATE activities SET dq_flags = NULLIF(json_remove(dq_flags, '$.duplicate_of'), '{}')
+                WHERE dq_flags LIKE '%duplicate_of%'""")
+  var dup = initTable[string, string]()
+  for r in db.rows(sql"""SELECT a.id, b.id,
+        (a.avg_hr IS NOT NULL) * 1000000 + a.n_samples,
+        (b.avg_hr IS NOT NULL) * 1000000 + b.n_samples
+      FROM activities a JOIN activities b
+        ON b.parent_type = a.parent_type AND b.id > a.id
+       AND abs(julianday(a.start_gmt) - julianday(b.start_gmt)) * 86400 < 600
+       AND abs(coalesce(a.duration, 0) - coalesce(b.duration, 0)) < 0.2 * max(a.duration, b.duration)"""):
+    let (keep, drop) = (if parseInt(r[2]) >= parseInt(r[3]): (r[0], r[1]) else: (r[1], r[0]))
+    if drop notin dup: dup[drop] = keep
+  for drop, keep in dup:
+    # follow chains so every copy points at the one that is kept
+    var k = keep
+    while k in dup: k = dup[k]
+    db.exec(sql"""UPDATE activities SET dq_flags = json_set(coalesce(dq_flags, '{}'), '$.duplicate_of', CAST(? AS INTEGER))
+                  WHERE id = ?""", parseInt(k), drop)
+
 proc scanAndImport*(db: DbConn, activityDir, healthDir: string,
                     log: LogProc = (proc (m: string) {.gcsafe.} = stderr.writeLine m),
                     metricsDir = ""): ImportStats =
@@ -855,5 +989,6 @@ proc scanAndImport*(db: DbConn, activityDir, healthDir: string,
     let t0 = epochTime()
     db.computeRunModel()
     db.computeRoutes()
+    db.markDuplicates()
     log &"run model rebuilt in {epochTime() - t0:.2f}s"
 

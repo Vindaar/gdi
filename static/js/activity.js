@@ -5,6 +5,7 @@ import {
   usesPace, TYPE_LABEL, css, series, zoneBlock, settingsZones, dataTable, objects,
   fmtDistanceLabel, segmented, remember, zoneOf,
   osmLayer,
+  dqIssues,
 } from './util.js';
 import { runModelCard } from './runmodel.js';
 
@@ -334,7 +335,11 @@ export async function activityPage(app, id) {
     h('span', { class: 'muted' }, 'Drag on a chart to select a section: charts zoom, the map highlights it and its statistics appear above (double-click resets).'));
 
   const modelCard = await runModelCard(a, d.model, d.modelNoise);
-  app.replaceChildren(head, tiles, modelCard ?? '', zoneCards,
+  const issues = dqIssues(a.dq_flags);
+  const dqNote = issues.length ? h('div', { class: 'card dq-note' }, h('b', {}, '⚠ Data quality'),
+    h('ul', {}, issues.map((x) => h('li', {}, x))),
+    JSON.parse(a.dq_flags).duplicate_of ? h('a', { href: `#/activity/${JSON.parse(a.dq_flags).duplicate_of}` }, 'Open the kept copy →') : null) : '';
+  app.replaceChildren(head, tiles, dqNote, modelCard ?? '', zoneCards,
     h('div', { class: 'grid', style: `grid-template-columns:${hasGps ? 'minmax(0,5fr) minmax(0,6fr)' : '1fr'};margin-bottom:16px;align-items:start` },
       hasGps ? h('div', { class: 'card', style: 'position:sticky;top:60px' }, mapEl) : null,
       h('div', {}, t.length ? extraPicker : h('div', { class: 'empty' }, 'No time-series data for this activity (yet).'), selEl, chartsEl)),

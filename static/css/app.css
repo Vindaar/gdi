@@ -13,6 +13,7 @@
   --accent-wash: rgba(42, 120, 214, 0.10);
   --good: #006300;
   --critical: #d03b3b;
+  --warning: #a35f00;
   /* categorical, fixed order */
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
   --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
@@ -28,7 +29,7 @@
     --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
     --accent: #3987e5; --accent-wash: rgba(57, 135, 229, 0.16);
-    --good: #0ca30c; --critical: #e66767;
+    --good: #0ca30c; --critical: #e66767; --warning: #e0a326;
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
     --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
     --z0: #383835; --z1: #184f95; --z2: #1c5cab; --z3: #2a78d6; --z4: #5598e7; --z5: #9ec5f4;
@@ -40,7 +41,7 @@
   --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
   --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
   --accent: #3987e5; --accent-wash: rgba(57, 135, 229, 0.16);
-  --good: #0ca30c; --critical: #e66767;
+  --good: #0ca30c; --critical: #e66767; --warning: #e0a326;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
   --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
   --z0: #383835; --z1: #184f95; --z2: #1c5cab; --z3: #2a78d6; --z4: #5598e7; --z5: #9ec5f4;
@@ -80,6 +81,8 @@ main { padding: 20px; max-width: 1500px; margin: 0 auto; }
 /* filter row */
 .filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: end; margin-bottom: 16px; }
 .filters label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink-2); }
+.filters .check { display: flex; align-items: center; gap: 6px; min-height: 30px; font-size: 13px; color: var(--ink); }
+.filters .check input { min-height: 0; margin: 0; }
 input, select, button {
   font: inherit; color: var(--ink); background: var(--surface);
   border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; min-height: 30px;
@@ -133,3 +136,9 @@ pre.json { font-size: 12px; max-height: 500px; overflow: auto; background: var(-
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; font-size: 13px; }
 .kv dt { color: var(--ink-2); }
 .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+/* data-quality markers */
+.dq-badge { color: var(--warning); cursor: help; font-size: 13px; }
+.dq-note { border-left: 3px solid var(--warning); padding: 8px 12px; margin-bottom: 16px; color: var(--ink-2); }
+.dq-note b { color: var(--ink); }
+.dq-note ul { margin: 4px 0 0; padding-left: 18px; }

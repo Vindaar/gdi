@@ -1,12 +1,12 @@
 // Activity list: filter row + sortable table over all activities.
 import {
   api, objects, h, dataTable, fmtDur, fmtKm, fmtNum, fmtDate, fmtSpeedFor, speedUnit,
-  FAMILIES, TYPE_LABEL, remember,
+  FAMILIES, TYPE_LABEL, remember, dqBadge,
 } from './util.js';
 
 const state = remember('activities', {
   family: 'all', type: '', q: '', from: '', to: '', minKm: '', maxKm: '',
-  maxAscent: '', sortKey: 'start_local', sortDesc: true,
+  maxAscent: '', hideFlagged: false, sortKey: 'start_local', sortDesc: true,
 });
 
 export async function activitiesPage(app) {
@@ -30,12 +30,15 @@ export async function activitiesPage(app) {
   const minKm = h('input', { type: 'number', step: '0.5', min: 0, value: s.minKm, placeholder: 'min' });
   const maxKm = h('input', { type: 'number', step: '0.5', min: 0, value: s.maxKm, placeholder: 'max' });
   const maxAscent = h('input', { type: 'number', step: '1', min: 0, value: s.maxAscent, placeholder: 'm/km' });
+  const hideFlagged = h('input', { type: 'checkbox', checked: !!s.hideFlagged });
 
   const filters = h('div', { class: 'filters' },
     h('label', {}, 'Sport', famSel), h('label', {}, 'Type', typeSel), h('label', {}, 'Search', q),
     h('label', {}, 'From', from), h('label', {}, 'To', to),
     h('label', {}, 'Distance km', h('span', {}, minKm, ' – ', maxKm)),
-    h('label', {}, 'Max ascent / km', maxAscent));
+    h('label', {}, 'Max ascent / km', maxAscent),
+    h('label', { title: 'GPS jumps, impossible speeds, HR artefacts … (hover ⚠ for details)' }, 'Data quality',
+      h('span', { class: 'check' }, hideFlagged, 'hide flagged')));
 
   const summary = h('div', { class: 'tiles', style: 'margin-bottom:16px' });
 
@@ -55,7 +58,7 @@ export async function activitiesPage(app) {
       return cb;
     } },
     { key: 'start_local', label: 'Date', left: true, fmt: (v) => fmtDate(v, true), link: (r) => `#/activity/${r.id}` },
-    { key: 'name', label: 'Name', left: true, cls: 'name', link: (r) => `#/activity/${r.id}`, title: (r) => r.name },
+    { key: 'name', label: 'Name', left: true, cls: 'name', link: (r) => `#/activity/${r.id}`, title: (r) => r.name, after: (r) => dqBadge(r.dq_flags) },
     { key: 'type_key', label: 'Type', left: true, fmt: (v) => TYPE_LABEL(v) },
     { key: 'distance', label: 'km', fmt: (v) => (v ? fmtKm(v) : '–') },
     { key: 'moving_duration', label: 'Moving', fmt: fmtDur },
@@ -87,6 +90,7 @@ export async function activitiesPage(app) {
     const f = {
       family: famSel.value, type: typeSel.value, q: q.value.trim().toLowerCase(),
       from: from.value, to: to.value, minKm: minKm.value, maxKm: maxKm.value, maxAscent: maxAscent.value,
+      hideFlagged: hideFlagged.checked,
     };
     state.set(f);
     const rows = all.filter((a) =>
@@ -97,7 +101,8 @@ export async function activitiesPage(app) {
       (!f.to || a.start_local.slice(0, 10) <= f.to) &&
       (f.minKm === '' || (a.distance || 0) >= f.minKm * 1000) &&
       (f.maxKm === '' || (a.distance || 0) <= f.maxKm * 1000) &&
-      (f.maxAscent === '' || (a.ascent_per_km != null && a.ascent_per_km <= +f.maxAscent)));
+      (f.maxAscent === '' || (a.ascent_per_km != null && a.ascent_per_km <= +f.maxAscent)) &&
+      (!f.hideFlagged || !a.dq_flags));
     table.update(rows);
     const sum = (k) => rows.reduce((acc, r) => acc + (r[k] || 0), 0);
     summary.replaceChildren(
@@ -109,7 +114,7 @@ export async function activitiesPage(app) {
   }
   const tileOf = (k, v, u) => h('div', { class: 'tile' }, h('div', { class: 'k' }, k), h('div', { class: 'v' }, v, u ? h('span', { class: 'u' }, u) : null));
 
-  for (const el of [famSel, typeSel, from, to]) el.addEventListener('change', apply);
+  for (const el of [famSel, typeSel, from, to, hideFlagged]) el.addEventListener('change', apply);
   for (const el of [q, minKm, maxKm, maxAscent]) el.addEventListener('input', apply);
   apply();
 

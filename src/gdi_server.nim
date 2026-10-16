@@ -89,7 +89,7 @@ const ActivityListCols = """id, name, type_key, parent_type, location, start_loc
   avg_speed, avg_moving_speed, avg_gap_speed, gap_source, max_speed, avg_hr, max_hr,
   avg_cadence, avg_power, norm_power, calories, aerobic_te, anaerobic_te,
   training_load, te_label, avg_temp, w_temp, w_apparent_temp, w_humidity,
-  w_wind_speed, w_type, gear, n_samples, has_gps, decoupling, decoupling_steady, pace_cv"""
+  w_wind_speed, w_type, gear, n_samples, has_gps, decoupling, decoupling_steady, pace_cv, dq_flags"""
 
 proc familyFilter(family: string, alias = "a"): (string, seq[string]) =
   if family.len == 0 or family == "all": ("1=1", @[])
@@ -168,32 +168,40 @@ proc apiEfforts(db: DbConn, distance: float, family: string): JsonNode =
     args.add fargs
     return db.queryTable(&"""SELECT a.id, a.name, a.type_key, a.start_local,
         a.distance AS total_distance, a.ascent_per_km, a.w_temp,
-        e.time, e.start_dist, e.avg_hr, e.elev_gain
+        e.time, e.start_dist, e.avg_hr, e.elev_gain, a.dq_flags
       FROM best_efforts e JOIN activities a ON a.id = e.activity_id
       WHERE abs(e.distance - ?) < 0.01 AND {ff}
       ORDER BY e.time""", args)
   var args = @[$distance]
   args.add fargs
   let acts = db.queryTable(&"""SELECT a.id, a.name, a.type_key, a.start_local,
-      a.distance, a.ascent_per_km, a.w_temp FROM activities a
-      WHERE a.distance >= ? AND a.n_samples > 0 AND {ff}""", args)
+      a.distance, a.ascent_per_km, a.w_temp, a.parent_type, a.dq_flags FROM activities a
+      WHERE a.distance >= ? AND a.n_samples > 0 AND {ff}
+        AND (a.dq_flags IS NULL OR a.dq_flags NOT LIKE '%distance_mismatch%')""", args)
   var rows = newJArray()
   for r in acts["rows"]:
     let id = r[0].getInt
     var st = initTable[string, seq[float]]()
-    for (k, blob) in db.getStreams(id, ["t", "sumDistance", "directHeartRate", "directElevation"]):
+    for (k, blob) in db.getStreams(id, ["t", "sumDistance", "directHeartRate", "directElevation",
+                                        "directSpeed", "directDoubleCadence"]):
       st[k] = decodeStream(blob).mapIt(float(it))
     if "t" notin st or "sumDistance" notin st: continue
-    let be = bestEfforts(st["t"], st["sumDistance"], st.getOrDefault("directHeartRate"),
+    # same glitch cleaning as the precomputed distances (gdi_import)
+    let family = r[7].getStr
+    let speed = st.getOrDefault("directSpeed")
+    let bad = strideGlitches(family, speed, st.getOrDefault("directDoubleCadence"))
+    let clean = cleanDistance(st["t"], st["sumDistance"], speed, bad, family)
+    if not clean.ok: continue
+    let be = bestEfforts(st["t"], clean.cum, st.getOrDefault("directHeartRate"),
                          st.getOrDefault("directElevation"), [distance])
     if be.len == 0: continue
     let e = be[0]
     rows.add %*[id, r[1], r[2], r[3], r[4], r[5], r[6], e.time, e.startDist,
-                (if e.avgHr.isNaN: newJNull() else: %e.avgHr), e.elevGain]
+                (if e.avgHr.isNaN: newJNull() else: %e.avgHr), e.elevGain, r[8]]
   var sorted = rows.getElems
   sorted.sort(proc (a, b: JsonNode): int = cmp(a[7].getFloat, b[7].getFloat))
   %*{"cols": ["id", "name", "type_key", "start_local", "total_distance",
-              "ascent_per_km", "w_temp", "time", "start_dist", "avg_hr", "elev_gain"],
+              "ascent_per_km", "w_temp", "time", "start_dist", "avg_hr", "elev_gain", "dq_flags"],
      "rows": sorted}
 
 proc apiMmp(db: DbConn, metric, family, fromD, toD: string): JsonNode =

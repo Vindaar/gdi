@@ -4,12 +4,12 @@
 import {
   api, objects, h, dataTable, fmtDur, fmtKm, fmtNum, fmtDate, fmtPace, fmtSpeedFor, speedUnit,
   usesPace, TYPE_LABEL, FAMILIES, remember, fmtDistanceLabel, echart, chartTheme, baseAxis,
-  baseTooltip, series, segmented,
+  baseTooltip, series, segmented, dqBadge,
 } from './util.js';
 import { durationPage } from './curves.js';
 
 const PRESETS = [400, 1000, 1609.344, 3000, 5000, 10000, 15000, 21097.5, 30000, 42195];
-const state = remember('efforts', { distance: 5000, family: 'running', type: '', from: '', to: '', maxAscent: '' });
+const state = remember('efforts', { distance: 5000, family: 'running', type: '', from: '', to: '', maxAscent: '', hideFlagged: false });
 
 const tabState = remember('effortsTab', { tab: 'distance' });
 
@@ -26,6 +26,7 @@ export async function effortsPage(app) {
   const from = h('input', { type: 'date', value: s.from });
   const to = h('input', { type: 'date', value: s.to });
   const maxAscent = h('input', { type: 'number', min: 0, step: 1, value: s.maxAscent, placeholder: 'm/km' });
+  const hideFlagged = h('input', { type: 'checkbox', checked: !!s.hideFlagged });
   const presetBox = h('span', {});
   const title = h('h2', {});
   const tableBox = h('div', {});
@@ -50,14 +51,15 @@ export async function effortsPage(app) {
   }
 
   function render() {
-    const f = { type: typeSel.value, from: from.value, to: to.value, maxAscent: maxAscent.value };
+    const f = { type: typeSel.value, from: from.value, to: to.value, maxAscent: maxAscent.value, hideFlagged: hideFlagged.checked };
     state.set(f);
     const { distance, family } = state.get();
     const filtered = rows.filter((r) =>
       (!f.type || r.type_key === f.type) &&
       (!f.from || r.start_local >= f.from) &&
       (!f.to || r.start_local.slice(0, 10) <= f.to) &&
-      (f.maxAscent === '' || (r.elev_gain ?? 0) / (distance / 1000) <= +f.maxAscent));
+      (f.maxAscent === '' || (r.elev_gain ?? 0) / (distance / 1000) <= +f.maxAscent) &&
+      (!f.hideFlagged || !r.dq_flags));
     // rank by time
     const ranked = [...filtered].sort((a, b) => a.time - b.time).map((r, i) => ({ ...r, rank: i + 1, speed: distance / r.time }));
     title.textContent = `${fmtDistanceLabel(distance)} — ${ranked.length} efforts`;
@@ -66,7 +68,7 @@ export async function effortsPage(app) {
       { key: 'time', label: 'Time', fmt: fmtDur, defaultAsc: true },
       { key: 'speed', label: usesPace(family) ? 'Pace' : 'Speed', fmt: (v) => `${fmtSpeedFor(family, v)} ${speedUnit(family)}` },
       { key: 'start_local', label: 'Date', left: true, fmt: (v) => fmtDate(v) },
-      { key: 'name', label: 'Activity', left: true, cls: 'name', link: (r) => `#/activity/${r.id}` },
+      { key: 'name', label: 'Activity', left: true, cls: 'name', link: (r) => `#/activity/${r.id}`, after: (r) => dqBadge(r.dq_flags) },
       { key: 'type_key', label: 'Type', left: true, fmt: TYPE_LABEL },
       { key: 'avg_hr', label: 'HR', fmt: (v) => fmtNum(v) },
       { key: 'elev_gain', label: '↑ m', fmt: (v) => fmtNum(v) },
@@ -106,7 +108,7 @@ export async function effortsPage(app) {
     const km = parseFloat(custom.value);
     if (km > 0) { state.set({ distance: Math.round(km * 1000 * 10) / 10 }); drawPresets(); load(); }
   });
-  for (const el of [typeSel, from, to]) el.addEventListener('change', render);
+  for (const el of [typeSel, from, to, hideFlagged]) el.addEventListener('change', render);
   maxAscent.addEventListener('input', render);
   drawPresets();
 
@@ -115,7 +117,9 @@ export async function effortsPage(app) {
       h('span', { class: 'sub' }, 'Fastest stretch of the given distance inside each activity (elapsed time).')),
     h('div', { class: 'filters' }, h('label', {}, 'Sport', famSel), h('label', {}, 'Distance', presetBox),
       h('label', {}, 'Custom km', custom), h('label', {}, 'Type', typeSel),
-      h('label', {}, 'From', from), h('label', {}, 'To', to), h('label', {}, 'Max ascent / km in effort', maxAscent)),
+      h('label', {}, 'From', from), h('label', {}, 'To', to), h('label', {}, 'Max ascent / km in effort', maxAscent),
+      h('label', { title: 'distance is glitch-cleaned either way; this drops activities flagged for any data issue' }, 'Data quality',
+        h('span', { class: 'check' }, hideFlagged, 'hide flagged'))),
     h('div', { class: 'card', style: 'margin-bottom:16px' }, h('h2', {}, 'Progression'), chartEl),
     h('div', { class: 'card' }, title, tableBox));
   await load();
