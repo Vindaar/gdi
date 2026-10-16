@@ -425,6 +425,27 @@ export function zonePaletteColors(s, dark = isDarkTheme()) {
   const p = ZONE_PRESETS[name] || ZONE_PRESETS[DEFAULT_ZONE_PALETTE];
   return dark && p.dark ? p.dark : p.light;
 }
+// ── page themes (css/app.css) — per browser, chosen in Settings ─────────────
+// `swatch`: page, surface, ink, accent, then the first four series colours
+export const THEMES = {
+  system:   { label: 'System', note: 'follows the light/dark setting of this device' },
+  light:    { label: 'Light', swatch: ['#f9f9f7', '#fcfcfb', '#0b0b0b', '#2a78d6', '#2a78d6', '#eb6834', '#1baf7a', '#eda100'] },
+  dark:     { label: 'Dark', swatch: ['#0d0d0d', '#1a1a19', '#f0efec', '#3987e5', '#3987e5', '#d95926', '#199e70', '#c98500'] },
+  sepia:    { label: 'Sepia', note: 'warm paper', swatch: ['#f4ecd8', '#fbf5e6', '#2b2117', '#a24d17', '#2f6db3', '#c4581f', '#008f74', '#a87a00'] },
+  nord:     { label: 'Nord', note: 'cool slate', swatch: ['#242933', '#2e3440', '#eceff4', '#88c0d0', '#5e8fd6', '#cc6436', '#21998a', '#b88a10'] },
+  black:    { label: 'Black', note: 'true black for OLED screens', swatch: ['#000000', '#0a0a0a', '#f5f5f5', '#3987e5', '#3987e5', '#d95926', '#199e70', '#c98500'] },
+  contrast: { label: 'High contrast', swatch: ['#ffffff', '#ffffff', '#000000', '#0050a8', '#0060a8', '#c24e00', '#008266', '#9a6b00'] },
+};
+export function currentTheme() {
+  try { return localStorage.getItem('gdi:theme') || 'system'; } catch { return 'system'; }
+}
+export function setTheme(name) {
+  try { localStorage.setItem('gdi:theme', name); } catch {}
+  if (name === 'system' || !THEMES[name]) delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = name;
+  applyZonePalette();   // zone presets have light / dark variants
+}
+
 let zoneSettings = {};
 /** Write the palette into --z0 … --z5 so every zone visual picks it up. */
 export function applyZonePalette(s = zoneSettings) {

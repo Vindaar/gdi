@@ -2,6 +2,7 @@
 import {
   api, postJson, h, fmtPace, hrZoneLabels, paceZoneLabels, ZONE_PRESETS, DEFAULT_ZONE_PALETTE,
   zonePaletteColors, applyZonePalette, SEQ_PRESETS, DEFAULT_SEQ_PALETTE, seqStops,
+  THEMES, currentTheme, setTheme,
 } from './util.js';
 
 export async function settingsPage(app) {
@@ -105,8 +106,34 @@ export async function settingsPage(app) {
     h('p', { class: 'sub' }, 'Used for colour-by-metric and ordered groups (years, temperature bands) on the Analysis page. Low values take the left end, high values the right end; the end that would disappear into the background is trimmed per light/dark theme.'),
     seqBox, h('div', { style: 'margin-top:8px' }, seqMsg));
 
+  // ── page theme (per browser) ──
+  const themeBox = h('div', { class: 'theme-list' });
+  function themePreview(t) {
+    if (!t.swatch) {   // system: half light, half dark
+      return h('span', { class: 'theme-swatch', style: 'background:linear-gradient(135deg,#f9f9f7 50%,#1a1a19 50%)' });
+    }
+    const [page, surface, ink, accent, ...ser] = t.swatch;
+    return h('span', { class: 'theme-swatch', style: `background:${page}` },
+      h('span', { class: 'theme-swatch-card', style: `background:${surface};color:${ink};border-color:${ink}22` },
+        h('span', { style: `color:${ink}` }, 'Aa'),
+        h('span', { class: 'theme-swatch-dots' }, [accent, ...ser].map((c) => h('i', { style: `background:${c}` })))));
+  }
+  function drawThemes() {
+    const cur = currentTheme();
+    themeBox.replaceChildren(...Object.entries(THEMES).map(([k, t]) => h('button', {
+      class: 'theme-opt' + (cur === k ? ' selected' : ''), 'aria-pressed': cur === k ? 'true' : 'false',
+      onclick: () => { setTheme(k); drawThemes(); drawPresets(); drawSeq(); },
+    }, themePreview(t), h('span', { class: 'theme-name' }, t.label), t.note ? h('span', { class: 'muted theme-note' }, t.note) : null)));
+  }
+  drawThemes();
+  const themeCard = h('div', { class: 'card', style: 'margin-bottom:16px' },
+    h('h2', {}, 'Theme'),
+    h('p', { class: 'sub' }, 'Stored in this browser, so phone and desktop can differ. Charts use the theme\'s colours from the next page you open.'),
+    themeBox);
+
   app.replaceChildren(
     h('div', { class: 'page-head' }, h('h1', {}, 'Settings')),
+    themeCard,
     h('div', { class: 'grid cols-2' },
       h('div', { class: 'card' }, h('h2', {}, 'Heart-rate zones'),
         h('p', { class: 'sub' }, `Lower bound (bpm) of each zone. Defaults are Garmin's current HR-reserve zones (max ${s.maxHr}, rest ${s.restingHr}, LTHR ${s.lthr}).`),
