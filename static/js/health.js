@@ -6,6 +6,10 @@ import {
 } from './util.js';
 import { withHrv, baselines, normalCard, unusualSignals, rollingBaseline, fmtClock } from './baselines.js';
 
+const READINESS_FACTORS = [['readiness_sleep', 'Sleep score'], ['readiness_recovery', 'Recovery time'],
+  ['readiness_hrv', 'HRV status'], ['readiness_acwr', 'Acute load'], ['readiness_stress', 'Stress history'],
+  ['readiness_sleep_history', 'Sleep history']];
+
 const state = remember('health', { range: '365', smooth: true });
 
 function rolling(vals, w) {
@@ -18,7 +22,7 @@ function rolling(vals, w) {
 
 export async function healthPage(app) {
   const all = objects(await api('health'));
-  const GM = await api('garmin-metrics?names=hrv_night,hrv_weekly,hrv_baseline_low,hrv_baseline_high,readiness').catch(() => ({}));
+  const GM = await api('garmin-metrics?names=hrv_night,hrv_weekly,hrv_baseline_low,hrv_baseline_high,readiness,readiness_sleep,readiness_recovery,readiness_hrv,readiness_acwr,readiness_stress,readiness_sleep_history').catch(() => ({}));
   // personal baselines over the full history (each day vs its preceding 30 days)
   const rowsAll = withHrv(all, GM);
   const base = baselines(rowsAll);
@@ -130,6 +134,7 @@ export async function healthPage(app) {
     // Garmin HRV status + training readiness (garmin sync-metrics); same day axis
     const gm = (name) => new Map((GM[name] || []).map((r) => [r[0], r]));
     const hn = gm('hrv_night'), hw = gm('hrv_weekly'), lo = gm('hrv_baseline_low'), hi = gm('hrv_baseline_high'), rd = gm('readiness');
+    const rf = Object.fromEntries(READINESS_FACTORS.map(([k]) => [k, gm(k)]));
     const v = (m, d) => m.get(d)?.[1] ?? null;
     const extra = [];
     if (dates.some((d) => hn.has(d))) extra.push(['Overnight HRV (ms) — Garmin baseline band', {
@@ -148,7 +153,13 @@ export async function healthPage(app) {
       ] }]);
     if (dates.some((d) => rd.has(d))) extra.push(['Training readiness (Garmin)', {
       grid: { left: 48, right: 12, top: 24, bottom: 28 },
-      tooltip: { ...baseTooltip(th), trigger: 'axis', formatter: (ps) => { const d = dates[ps[0].dataIndex]; return `<b>${d}</b><br>${v(rd, d) ?? '–'} · ${(rd.get(d)?.[2] || '').toLowerCase()}`; } },
+      tooltip: { ...baseTooltip(th), trigger: 'axis', formatter: (ps) => {
+        const d = dates[ps[0].dataIndex];
+        // factor scores (0–100 %, higher = helping readiness), weakest first
+        const fs = READINESS_FACTORS.map(([k, label]) => [label, v(rf[k], d)]).filter((f) => f[1] != null).sort((a, b) => a[1] - b[1]);
+        return `<b>${d}</b><br>${v(rd, d) ?? '–'} · ${(rd.get(d)?.[2] || '').toLowerCase()}` +
+          (fs.length ? '<br><span style="opacity:.75">factors (weakest first)</span><br>' + fs.map(([l, x]) => `${l}: ${Math.round(x)} %`).join('<br>') : '');
+      } },
       yAxis: { type: 'value', min: 0, max: 100, ...baseAxis(th) },
       series: [{ name: 'Readiness', type: 'bar', data: dates.map((d) => v(rd, d)), itemStyle: { color: series(0) } }] }]);
     // nights with several recovery signals outside the normal range
