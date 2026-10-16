@@ -158,6 +158,14 @@ CREATE TABLE IF NOT EXISTS mmp (          -- mean-maximal values by duration
   PRIMARY KEY (activity_id, metric, duration)
 );
 CREATE INDEX IF NOT EXISTS mmp_md ON mmp(metric, duration, value);
+CREATE TABLE IF NOT EXISTS activity_gear ( -- every gear item linked to an activity
+  activity_id INTEGER NOT NULL,
+  uuid        TEXT NOT NULL,
+  name        TEXT,
+  gear_type   TEXT,                   -- SHOES, BIKE, …
+  json        TEXT,                   -- Garmin's gear record as of the activity's sync
+  PRIMARY KEY (activity_id, uuid)
+);
 CREATE TABLE IF NOT EXISTS hr_recovery (  -- HR drop after easing off a hard stretch (gdi_import.hrRecovery)
   activity_id INTEGER NOT NULL,
   t_end       REAL NOT NULL,          -- s from start: where the effort ends

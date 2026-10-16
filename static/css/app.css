@@ -155,3 +155,9 @@ table.blocks th div:first-child { font-weight: 600; font-size: 13px; }
 .zlist.blockzl { grid-template-columns: auto 1fr auto auto; }
 .blocks-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 @media (max-width: 1100px) { .blocks-layout { grid-template-columns: minmax(0, 1fr); } }
+
+/* gear usage vs Garmin's target */
+.usage { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.usage-bar { display: inline-block; width: 60px; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.usage-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.usage.over .usage-bar > span { background: var(--warning); }

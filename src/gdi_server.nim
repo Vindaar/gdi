@@ -378,6 +378,22 @@ proc apiHrRecovery(db: DbConn): JsonNode =
     WHERE a.dq_flags IS NULL OR (a.dq_flags NOT LIKE '%duplicate_of%' AND a.dq_flags NOT LIKE '%hr_cadence_lock%')
     ORDER BY a.start_local, r.t_end""")
 
+proc apiGear(db: DbConn): JsonNode =
+  ## Gear records (latest snapshot per item) and every linked activity with
+  ## the numbers the gear page aggregates.
+  var gear = newJObject()
+  for r in db.rows(sql"""SELECT g.uuid, g.json FROM activity_gear g JOIN activities a ON a.id = g.activity_id
+      ORDER BY a.start_local"""):
+    gear[r[0]] = parseJson(r[1])          # later activities overwrite → latest snapshot
+  %*{"gear": gear,
+     "uses": db.queryTable("""SELECT g.uuid, g.name, a.id, a.start_local, a.parent_type, a.type_key,
+        a.distance, a.moving_duration, a.elev_gain, a.ascent_per_km, a.avg_hr, a.avg_gap_speed,
+        a.avg_moving_speed, a.avg_cadence, a.avg_stride, m.delta, a.decoupling, a.decoupling_steady
+      FROM activity_gear g JOIN activities a ON a.id = g.activity_id
+      LEFT JOIN run_model m ON m.activity_id = a.id
+      WHERE a.dq_flags IS NULL OR a.dq_flags NOT LIKE '%duplicate_of%'
+      ORDER BY a.start_local""")}
+
 proc apiGarminMetrics(db: DbConn, names: string): JsonNode =
   ## {metric: [[date, value, text], …]} for the requested (or all) metrics.
   result = newJObject()
@@ -497,6 +513,7 @@ proc handle*(cfg: ServerCfg, req: Request, prefix = ""): Future[void] {.async, g
       elif r == @["hist"] and req.reqMethod == HttpPost:
         await req.sendJson(db.apiSampleHist(parseJson(req.body)))
       elif r == @["hr-recovery"]: await req.sendJson(db.apiHrRecovery)
+      elif r == @["gear"]: await req.sendJson(db.apiGear)
       elif r == @["block"]:
         await req.sendJson(db.apiBlock(qp.getOrDefault("family", "running"),
                                        qp.getOrDefault("from", ""), qp.getOrDefault("to", "")))

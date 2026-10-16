@@ -9,7 +9,7 @@ import std / [os, json, math, strutils, strformat, times, tables, algorithm, set
 import gdi_db, gdi_models, gdi_metrics
 
 const
-  ImporterVersion* = "13"
+  ImporterVersion* = "14"
     ## Bump whenever derived data changes; forces a full re-import.
   BestEffortDistances* = [400.0, 1000.0, 1609.344, 3000.0, 5000.0, 10000.0,
                           15000.0, 20000.0, 21097.5, 30000.0, 40000.0, 42195.0,
@@ -646,7 +646,7 @@ proc routeSignature*(lat, lon: seq[float]): (float, seq[(float, float)]) =
 
 proc deleteActivity*(db: DbConn, id: int) =
   for t in ["activities", "streams", "laps", "best_efforts", "hr_hist",
-            "speed_hist", "segments", "mmp", "route_sig", "hr_recovery"]:
+            "speed_hist", "segments", "mmp", "route_sig", "hr_recovery", "activity_gear"]:
     let col = if t == "activities": "id" else: "activity_id"
     db.exec(sql("DELETE FROM " & t & " WHERE " & col & " = ?"), id)
 
@@ -810,6 +810,14 @@ proc importActivity*(db: DbConn, j: JsonNode) =
     ("has_gps", %int(hasGps)),
     ("meta_json", meta),
   ])
+
+  # gear (all items; `activities.gear` keeps the first for the list)
+  if j{"gear"} != nil and j["gear"].kind == JArray:
+    for g in j["gear"]:
+      let nm = g.str("name")
+      db.insertRow("activity_gear", @[("activity_id", %id), ("uuid", %g.str("uuid")),
+        ("name", js(if nm.len > 0: nm else: (g.str("brand") & " " & g.str("model")).strip)),
+        ("gear_type", js g.str("gearType")), ("json", %($g))])
 
   # streams
   for k, xs in st:
