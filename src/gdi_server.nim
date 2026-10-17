@@ -8,7 +8,7 @@ import std / [asynchttpserver, asyncdispatch, json, strutils, strformat, os,
               math, tables, times, base64, uri, sequtils, algorithm]
 import db_connector / sqlite3
 import zippy
-import gdi_db, gdi_import, gdi_notes, gdi_export
+import gdi_db, gdi_import, gdi_notes, gdi_export, gdi_weather
 
 type
   ServerCfg* = object
@@ -16,6 +16,7 @@ type
     activityDir*, healthDir*, staticDir*, notesFile*: string
     user*, password*: string        ## basic auth; empty user = disabled
     watchInterval*: int             ## seconds; 0 = no auto-import
+    weatherFill*: bool              ## backfill missing weather from Open-Meteo
 
 # ── typed query → JSON table ────────────────────────────────────────────────
 
@@ -626,6 +627,8 @@ proc serve*(cfg: ServerCfg, port: int, address = "127.0.0.1") =
   let server = newAsyncHttpServer(maxBody = 1 shl 20)
   if cfg.watchInterval > 0:
     asyncCheck watchLoop(cfg)
+  if cfg.weatherFill:
+    asyncCheck weatherBackfill(cfg.db, log = (proc (m: string) {.gcsafe.} = stderr.writeLine m))
   stderr.writeLine &"serving on http://{address}:{port}/"
   proc cb(req: Request) {.async, gcsafe.} =
     await handle(cfg, req)

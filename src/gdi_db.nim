@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS activities (
   w_wind_gust      REAL,
   w_wind_dir       TEXT,
   w_type           TEXT,
+  w_source         TEXT,              -- 'garmin' | 'open-meteo' (gdi_weather) | NULL
   gear             TEXT,
   n_samples        INTEGER NOT NULL DEFAULT 0,
   has_gps          INTEGER NOT NULL DEFAULT 0,
@@ -186,6 +187,12 @@ CREATE TABLE IF NOT EXISTS mmp (          -- mean-maximal values by duration
   PRIMARY KEY (activity_id, metric, duration)
 );
 CREATE INDEX IF NOT EXISTS mmp_md ON mmp(metric, duration, value);
+CREATE TABLE IF NOT EXISTS weather_fill (  -- Open-Meteo lookups (gdi_weather), kept across re-imports
+  activity_id INTEGER PRIMARY KEY,
+  fetched_at  INTEGER NOT NULL,       -- unix s
+  ok          INTEGER NOT NULL,       -- 0 = failed / no data (retried after a week)
+  json        TEXT                    -- the day's hourly values (UTC)
+);
 CREATE TABLE IF NOT EXISTS activity_notes ( -- diary entry per activity (gdi_notes), survives activity re-imports
   activity_id INTEGER PRIMARY KEY,
   date        TEXT,                   -- the entry's heading date
@@ -311,7 +318,8 @@ proc openDb*(path: string): DbConn =
                      ("stamina_begin", "REAL"), ("stamina_end", "REAL"), ("stamina_min", "REAL"),
                      ("bb_delta", "REAL"), ("impact_load", "REAL"), ("recovery_hr", "REAL"),
                      ("step_speed_loss", "REAL"), ("intensity_min", "REAL"),
-                     ("perf_cond_first", "REAL"), ("perf_cond_last", "REAL")]:
+                     ("perf_cond_first", "REAL"), ("perf_cond_last", "REAL"),
+                     ("w_source", "TEXT")]:
     if col notin cols:
       result.exec(sql("ALTER TABLE activities ADD COLUMN " & col & " " & typ))
   # segments are derived (filled by the importer): recreate on layout change

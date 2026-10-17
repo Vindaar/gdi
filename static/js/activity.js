@@ -94,7 +94,13 @@ export async function activityPage(app, id) {
     a.rpe != null || a.feel != null ? tile('Perceived effort', a.rpe != null ? `${fmtNum(a.rpe)} / 10` : '–', FEEL_LABEL(a.feel) ? `felt ${FEEL_LABEL(a.feel)}` : '') : null,
     a.calories ? tile('Calories', fmtNum(a.calories), 'kcal') : null,
     a.w_temp != null ? tile('Weather', `${fmtNum(a.w_temp)}°C`, [a.w_type, a.w_humidity != null ? `${fmtNum(a.w_humidity)}%` : null,
-      a.w_wind_speed != null ? `wind ${fmtNum(a.w_wind_speed * 3.6)} km/h ${a.w_wind_dir || ''}` : null].filter(Boolean).join(' · ')) : null);
+      a.w_wind_speed != null ? `wind ${fmtNum(a.w_wind_speed * 3.6)} km/h ${a.w_wind_dir || ''}` : null,
+      a.w_source === 'open-meteo' ? 'via Open-Meteo' : null].filter(Boolean).join(' · ')) : null);
+  // Open-Meteo data (activities without Garmin weather) needs attribution (CC BY 4.0)
+  if (a.w_source === 'open-meteo') {
+    const wt = [...tiles.querySelectorAll('.tile')].find((t) => t.querySelector('.k')?.textContent === 'Weather');
+    if (wt) wt.title = 'No Garmin weather for this activity: hourly ERA5 reanalysis at the start (≈ 25 km grid), weather data by Open-Meteo.com (CC BY 4.0). Typically within ~1.5 °C of Garmin\'s station data.';
+  }
 
   // ── x axis ──
   const t = st.t || [];

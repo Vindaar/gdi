@@ -22,12 +22,15 @@ proc importCmd(db = DefaultDb, activities = DefaultActivity,
 
 proc serveCmd(db = DefaultDb, activities = DefaultActivity,
               health = DefaultHealth, port = 8091, address = "127.0.0.1",
-              staticDir = "", watch = 60, user = "", password = "", notes = "") =
+              staticDir = "", watch = 60, user = "", password = "", notes = "",
+              weather = true) =
   ## Serve the web UI + JSON API. Imports changed raw files on startup and
   ## then every `--watch` seconds (0 disables). Basic auth is enabled when
   ## `--user` (or env GDI_USER, GDI_PASSWORD) is set. `--notes` is the Org
   ## file with per-activity notes/tags (default: exercise-notes.org next to
-  ## the activities directory).
+  ## the activities directory). `--weather` backfills weather for activities
+  ## without Garmin weather from Open-Meteo's archive (start position rounded
+  ## to 0.1°, one request every few seconds).
   let conn = openDb(db)
   let nf = if notes.len > 0: notes.absolutePath else: defaultNotesFile(activities)
   let st = conn.scanAndImport(activities, health, notesFile = nf)
@@ -35,7 +38,7 @@ proc serveCmd(db = DefaultDb, activities = DefaultActivity,
   let sdir = if staticDir.len > 0: staticDir
              else: getAppDir() / "static"
   serve(ServerCfg(db: conn, activityDir: activities, healthDir: health, notesFile: nf,
-                  staticDir: sdir, watchInterval: watch,
+                  staticDir: sdir, watchInterval: watch, weatherFill: weather,
                   user: (if user.len > 0: user else: getEnv("GDI_USER")),
                   password: (if password.len > 0: password else: getEnv("GDI_PASSWORD"))),
         port, address)

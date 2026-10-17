@@ -6,7 +6,7 @@
 ## in the `files` table, so `scanAndImport` only touches what changed.
 
 import std / [os, json, math, strutils, strformat, times, tables, algorithm, sets, sequtils]
-import gdi_db, gdi_models, gdi_metrics, gdi_notes
+import gdi_db, gdi_models, gdi_metrics, gdi_notes, gdi_weather
 
 const
   ImporterVersion* = "16"
@@ -848,11 +848,15 @@ proc importActivity*(db: DbConn, j: JsonNode) =
     ("w_wind_gust", jf mphToMs(w.num("windGust"))),
     ("w_wind_dir", js w.str("windDirectionCompassPoint")),
     ("w_type", js w.str("weatherTypeDTO", "desc")),
+    ("w_source", (if w.isNil or w.kind != JObject or w.num("temp").isNaN: newJNull() else: %"garmin")),
     ("gear", js gearName),
     ("n_samples", %nSamples),
     ("has_gps", %int(hasGps)),
     ("meta_json", meta),
   ])
+
+  # no Garmin weather: use an earlier Open-Meteo lookup if there is one
+  db.applyWeatherFill(id)
 
   # gear (all items; `activities.gear` keeps the first for the list)
   if j{"gear"} != nil and j["gear"].kind == JArray:
