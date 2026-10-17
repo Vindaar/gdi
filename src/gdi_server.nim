@@ -136,6 +136,55 @@ proc apiNotes(db: DbConn, id: string): JsonNode =
       other.add %*{"id": x, "name": r[0], "start_local": r[1]}
     result["shared"] = other
 
+proc apiSimilar(db: DbConn, id: string, limit = 15): JsonNode =
+  ## Runs sharing track with this one (gdi_circuits.run_overlap), best first:
+  ## score = share of this run covered × share of the other covered × length
+  ## ratio, so the same route ranks above runs that only share a part.
+  db.queryTable(&"""WITH me AS (SELECT id, distance AS d FROM activities WHERE id = ?),
+      x AS (SELECT o.b AS other, o.shared AS s_other,
+              COALESCE((SELECT shared FROM run_overlap o2 WHERE o2.a = o.b AND o2.b = o.a), 0) AS s_me
+            FROM run_overlap o, me WHERE o.a = me.id)
+    SELECT a.id, a.name, a.start_local, a.type_key, a.distance, a.moving_duration, a.avg_moving_speed,
+      a.avg_gap_speed, a.avg_hr, x.s_me AS shared_me, x.s_other AS shared_other,
+      MIN(x.s_me / me.d, 1.0) * MIN(x.s_other / a.distance, 1.0) * MIN(me.d, a.distance) / MAX(me.d, a.distance) AS score
+    FROM x JOIN activities a ON a.id = x.other, me
+    WHERE a.distance > 0 AND me.d > 0
+    ORDER BY score DESC, a.start_local DESC LIMIT {limit}""", id)
+
+proc apiActivityCircuits(db: DbConn, id: string): JsonNode =
+  ## this activity's laps on circuits, with each circuit's median lap
+  result = newJArray()
+  for c in db.rows(sql"""SELECT DISTINCT l.circuit_id, c.length FROM circuit_laps l
+      JOIN circuits c ON c.id = l.circuit_id WHERE l.activity_id = ?""", id):
+    var times: seq[float]
+    for r in db.rows(sql"SELECT moving FROM circuit_laps WHERE circuit_id = ? AND moving > 0", c[0]):
+      times.add parseFloat(r[0])
+    times.sort()
+    result.add %*{
+      "circuit_id": parseBiggestInt(c[0]), "length": parseFloat(c[1]), "n_laps": times.len,
+      "median": (if times.len > 0: %times[times.len div 2] else: newJNull()),
+      "best": (if times.len > 0: %times[0] else: newJNull()),
+      "laps": db.queryTable("""SELECT l.*, (SELECT COUNT(*) + 1 FROM circuit_laps x
+            WHERE x.circuit_id = l.circuit_id AND x.moving < l.moving) AS rank
+          FROM circuit_laps l WHERE l.circuit_id = ? AND l.activity_id = ? ORDER BY l.lap""", c[0], id)}
+
+proc apiCircuits(db: DbConn): JsonNode =
+  db.queryTable("""SELECT c.id, c.family, c.length, c.lat, c.lon, c.n_runs, c.first_date, c.last_date, c.pts,
+      ref.location, ref.name AS ref_name, COUNT(l.lap) AS n_laps, MIN(l.moving) AS best_time,
+      (SELECT x.activity_id FROM circuit_laps x WHERE x.circuit_id = c.id ORDER BY x.moving LIMIT 1) AS best_id
+    FROM circuits c LEFT JOIN circuit_laps l ON l.circuit_id = c.id
+      LEFT JOIN activities ref ON ref.id = c.id / 100
+    GROUP BY c.id ORDER BY n_laps DESC""")
+
+proc apiCircuit(db: DbConn, id: string): JsonNode =
+  let info = db.queryTable("""SELECT c.*, ref.location, ref.name AS ref_name FROM circuits c
+      LEFT JOIN activities ref ON ref.id = c.id / 100 WHERE c.id = ?""", id).firstRowObj
+  if info.kind == JNull: return newJNull()
+  %*{"info": info,
+     "laps": db.queryTable("""SELECT l.*, a.name, a.start_local, a.distance AS run_distance, a.w_temp,
+         a.type_key FROM circuit_laps l JOIN activities a ON a.id = l.activity_id
+       WHERE l.circuit_id = ? ORDER BY a.start_local, l.lap""", id)}
+
 proc apiActivity(db: DbConn, id: string): JsonNode =
   let a = db.queryTable("SELECT * FROM activities WHERE id = ?", id).firstRowObj
   if a.kind == JNull: return newJNull()
@@ -164,6 +213,8 @@ proc apiActivity(db: DbConn, id: string): JsonNode =
         (SELECT COUNT(*) + 1 FROM routes x JOIN activities y ON y.id = x.activity_id
           WHERE x.route_id = r.route_id AND y.moving_duration < me.moving_duration) AS rank
       FROM routes r JOIN activities me ON me.id = r.activity_id WHERE r.activity_id = ?""", id).firstRowObj,
+    "similar": db.apiSimilar(id),
+    "circuits": db.apiActivityCircuits(id),
   }
 
 proc apiStreams(db: DbConn, id: int): JsonNode =
@@ -564,6 +615,11 @@ proc handle*(cfg: ServerCfg, req: Request, prefix = ""): Future[void] {.async, g
         await req.sendJson(db.apiMmp(qp.getOrDefault("metric", "speed"), qp.getOrDefault("family", "running"),
                                      qp.getOrDefault("from", ""), qp.getOrDefault("to", "")))
       elif r == @["routes"]: await req.sendJson(db.apiRoutes)
+      elif r == @["circuits"]: await req.sendJson(db.apiCircuits)
+      elif r.len == 2 and r[0] == "circuit":
+        let c = db.apiCircuit(r[1])
+        if c.kind == JNull: await req.sendJson(%*{"error": "not found"}, Http404)
+        else: await req.sendJson(c)
       elif r.len == 2 and r[0] == "route":
         let rt = db.apiRoute(r[1])
         if rt.kind == JNull: await req.sendJson(%*{"error": "not found"}, Http404)

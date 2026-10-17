@@ -187,6 +187,38 @@ CREATE TABLE IF NOT EXISTS mmp (          -- mean-maximal values by duration
   PRIMARY KEY (activity_id, metric, duration)
 );
 CREATE INDEX IF NOT EXISTS mmp_md ON mmp(metric, duration, value);
+CREATE TABLE IF NOT EXISTS run_overlap (   -- metres of b's track that a also covers (gdi_circuits)
+  a      INTEGER NOT NULL,
+  b      INTEGER NOT NULL,
+  shared REAL NOT NULL,
+  PRIMARY KEY (a, b)
+);
+CREATE INDEX IF NOT EXISTS run_overlap_b ON run_overlap(b);
+CREATE TABLE IF NOT EXISTS overlap_done (  -- tracks already compared with all others
+  activity_id INTEGER PRIMARY KEY
+);
+CREATE TABLE IF NOT EXISTS circuits (      -- loops run several times within runs (gdi_circuits)
+  id         INTEGER PRIMARY KEY,     -- first run's activity id × 100 + loop index
+  family     TEXT NOT NULL,
+  length     REAL NOT NULL,           -- m (resampled GPS)
+  lat        REAL, lon REAL,          -- lap start
+  n_runs     INTEGER,
+  first_date TEXT, last_date TEXT,
+  pts        TEXT                     -- JSON [[lat, lon], ...] from the lap start
+);
+CREATE TABLE IF NOT EXISTS circuit_laps (
+  circuit_id  INTEGER NOT NULL,
+  activity_id INTEGER NOT NULL,
+  lap         INTEGER NOT NULL,       -- 1-based within the run
+  t_start     REAL,                   -- s from activity start
+  moving      REAL,                   -- s
+  elapsed     REAL,
+  watch_dist  REAL,                   -- m, from the watch's distance
+  avg_hr      REAL,
+  avg_gap     REAL,                   -- m/s
+  PRIMARY KEY (circuit_id, activity_id, lap)
+);
+CREATE INDEX IF NOT EXISTS circuit_laps_act ON circuit_laps(activity_id);
 CREATE TABLE IF NOT EXISTS weather_fill (  -- Open-Meteo lookups (gdi_weather), kept across re-imports
   activity_id INTEGER PRIMARY KEY,
   fetched_at  INTEGER NOT NULL,       -- unix s

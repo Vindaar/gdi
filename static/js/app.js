@@ -10,6 +10,7 @@ import { routesPage, routePage } from './routes.js';
 import { comparePage } from './compare.js';
 import { blocksPage } from './blocks.js';
 import { gearPage } from './gear.js';
+import { circuitPage } from './circuits.js';
 
 const routes = [
   [/^#?\/?$/, () => dashboardPage, 'dashboard'],
@@ -18,6 +19,7 @@ const routes = [
   [/^#\/efforts$/, () => effortsPage, 'efforts'],
   [/^#\/routes$/, () => routesPage, 'routes'],
   [/^#\/route\/(\d+)$/, () => routePage, 'routes'],
+  [/^#\/circuit\/(\d+)$/, () => circuitPage, 'routes'],
   [/^#\/compare$/, () => comparePage, 'activities'],
   [/^#\/analysis$/, () => analysisPage, 'analysis'],
   [/^#\/blocks$/, () => blocksPage, 'blocks'],

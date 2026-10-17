@@ -68,14 +68,20 @@ export async function routesPage(app) {
       { key: 'last', label: 'Last', left: true, fmt: (v) => fmtDate(v) },
     ], { sortKey: 'n', sortDesc: true, id: 'routes' }));
   }
-  famSel.addEventListener('change', render);
+  const circBox = h('div', {});
+  const renderCircuits = async () => {
+    const { circuitsCard } = await import('./circuits.js');
+    circBox.replaceChildren(await circuitsCard(famSel.value));
+  };
+  famSel.addEventListener('change', () => { render(); renderCircuits(); });
   minRuns.addEventListener('input', render);
   render();
+  renderCircuits();
   app.replaceChildren(
     h('div', { class: 'page-head' }, h('h1', {}, 'Routes'),
       h('span', { class: 'sub' }, 'Routes you have done repeatedly (same start, end and track within GPS tolerance; reverse direction counts separately).')),
     h('div', { class: 'filters' }, h('label', {}, 'Sport', famSel), h('label', {}, 'At least … times', minRuns)),
-    h('div', { class: 'card' }, box));
+    h('div', { class: 'card' }, box), circBox);
 }
 
 export async function routePage(app, id) {

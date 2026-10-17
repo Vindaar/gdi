@@ -6,7 +6,7 @@
 ## in the `files` table, so `scanAndImport` only touches what changed.
 
 import std / [os, json, math, strutils, strformat, times, tables, algorithm, sets, sequtils]
-import gdi_db, gdi_models, gdi_metrics, gdi_notes, gdi_weather
+import gdi_db, gdi_models, gdi_metrics, gdi_notes, gdi_weather, gdi_circuits
 
 const
   ImporterVersion* = "16"
@@ -667,7 +667,8 @@ proc routeSignature*(lat, lon: seq[float]): (float, seq[(float, float)]) =
 
 proc deleteActivity*(db: DbConn, id: int) =
   for t in ["activities", "streams", "laps", "best_efforts", "hr_hist",
-            "speed_hist", "segments", "mmp", "route_sig", "hr_recovery", "activity_gear"]:
+            "speed_hist", "segments", "mmp", "route_sig", "hr_recovery", "activity_gear",
+            "overlap_done"]:
     let col = if t == "activities": "id" else: "activity_id"
     db.exec(sql("DELETE FROM " & t & " WHERE " & col & " = ?"), id)
 
@@ -1148,6 +1149,7 @@ proc scanAndImport*(db: DbConn, activityDir, healthDir: string,
   if db.getValue(sql"SELECT value FROM meta WHERE key = 'importer'") != ImporterVersion:
     log "importer version changed → re-importing everything"
     db.exec(sql"DELETE FROM files")
+    db.exec(sql"DELETE FROM overlap_done")
     db.exec(sql"INSERT OR REPLACE INTO meta(key, value) VALUES ('importer', ?)", ImporterVersion)
   scanDir(db, activityDir, "activity", result, log)
   scanDir(db, healthDir, "health", result, log)
@@ -1160,11 +1162,13 @@ proc scanAndImport*(db: DbConn, activityDir, healthDir: string,
            else: ""
   if db.importNotes(nf): log "notes reloaded from " & nf
   # derived models depend on the whole history → rebuild after any change
-  let empty = db.getValue(sql"SELECT COUNT(*) FROM run_model") == "0"
+  let empty = db.getValue(sql"SELECT COUNT(*) FROM run_model") == "0" or
+              db.getValue(sql"SELECT COUNT(*) FROM overlap_done") == "0"
   if result.imported + result.removed > 0 or empty:
     let t0 = epochTime()
     db.computeRunModel()
     db.computeRoutes()
     db.markDuplicates()
     log &"run model rebuilt in {epochTime() - t0:.2f}s"
+    db.computeCircuits(log)
 

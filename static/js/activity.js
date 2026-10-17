@@ -7,6 +7,7 @@ import {
   osmLayer,
   dqIssues, FEEL_LABEL, parseTags, tagChips, TAG_SUGGESTIONS, postJson, exportMenu, orgText,
 } from './util.js';
+import { activityCircuitsCard, similarRunsCard } from './circuits.js';
 import { runModelCard } from './runmodel.js';
 
 const ui = remember('activity', { xAxis: 'distance', extra: [] });
@@ -433,7 +434,8 @@ export async function activityPage(app, id) {
     h('div', { class: 'grid', style: `grid-template-columns:${hasGps ? 'minmax(0,5fr) minmax(0,6fr)' : '1fr'};margin-bottom:16px;align-items:start` },
       hasGps ? h('div', { class: 'card', style: 'position:sticky;top:60px' }, mapEl) : null,
       h('div', {}, t.length ? extraPicker : h('div', { class: 'empty' }, 'No time-series data for this activity (yet).'), selEl, chartsEl)),
-    h('div', { class: 'grid cols-2', style: 'margin-bottom:16px;align-items:start' }, splitTable, lapTable, effortTable, hrrTable),
+    h('div', { class: 'grid cols-2', style: 'margin-bottom:16px;align-items:start' }, splitTable, lapTable,
+      activityCircuitsCard(d.circuits, d.settings, fam), similarRunsCard(d.similar, a), effortTable, hrrTable),
     rawDetails);
 
   if (hasGps) {
