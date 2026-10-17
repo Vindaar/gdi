@@ -86,6 +86,14 @@ proc parseHill(j: JsonNode, rows: var seq[Row]) =
     rows.addRow(d, "hill_strength", e{"strengthScore"}.toF)
     rows.addRow(d, "hill_endurance", e{"enduranceScore"}.toF)
 
+proc parseRunningEconomy(j: JsonNode, rows: var seq[Row]) =
+  ## [{calendarDate, score, classification}] — score in ml O2 / kg / km
+  ## (lower = more economical); days before the first estimate are null.
+  if j.kind != JArray: return
+  for e in j:
+    if e{"score"}.isNil or e{"score"}.kind == JNull: continue
+    rows.addRow(e{"calendarDate"}.getStr, "running_economy", e{"score"}.toF, e{"classification"}.getStr)
+
 proc parseLt(j: JsonNode, metric: string, scale: float, rows: var seq[Row]) =
   if j.kind != JArray: return
   for e in j:
@@ -123,6 +131,7 @@ proc parseMetricFile*(metricDir: string, j: JsonNode): seq[Row] =
   of "training_status": parseTrainingStatus(j, result)
   of "endurance_score": parseEndurance(j, result)
   of "hill_score": parseHill(j, result)
+  of "running_economy": parseRunningEconomy(j, result)
   of "lt_speed": parseLt(j, "lt_speed", 10.0, result)   # stored ×0.1 m/s by Garmin
   of "lt_hr": parseLt(j, "lt_hr", 1.0, result)
   of "fitness_age": parseFitnessAge(j, result)

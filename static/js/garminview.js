@@ -19,6 +19,7 @@ function rollingBest(rows, days = 90) {
 export function createGarminCard(mk) {
   const panels = [
     ['vo2', 'VO₂max (running)', 'Garmin estimate from qualifying runs.'],
+    ['re', 'Running economy', 'Garmin: estimated oxygen cost of running, ml O₂ per kg per km (lower = more economical). Compare with heart rate at a fixed pace above.'],
     ['race', 'Race predictions vs your 90-day bests', 'Lines: Garmin predictions (as pace). Dots: your best 5 km / 10 km within the preceding 90 days.'],
     ['endurance', 'Endurance score', 'Garmin: ability to sustain effort, from all endurance activities.'],
     ['hill', 'Hill score (overall · strength · endurance)', 'Garmin: uphill running ability.'],
@@ -58,6 +59,15 @@ export function createGarminCard(mk) {
       tooltip: { ...baseTooltip(th), trigger: 'axis', valueFormatter: (v) => (+v).toFixed(1) },
       series: [line('VO₂max', vo2, 0, { step: 'end' })] }), true) : empty(charts.vo2);
 
+    // running economy (steps: one value per day, changes rarely)
+    const re = pick('running_economy');
+    // fixed span of ≥ 20 units, so ±1 steps don't fill the panel
+    const reMid = re.length ? (Math.min(...re.map((p) => p[1])) + Math.max(...re.map((p) => p[1]))) / 2 : 0;
+    const reHalf = re.length ? Math.max(10, (Math.max(...re.map((p) => p[1])) - Math.min(...re.map((p) => p[1]))) / 2 + 3) : 10;
+    re.length ? charts.re.setOption(base({ yAxis: { type: 'value', min: Math.floor(reMid - reHalf), max: Math.ceil(reMid + reHalf), minInterval: 1, ...baseAxis(th) },
+      tooltip: { ...baseTooltip(th), trigger: 'axis', valueFormatter: (v) => `${Math.round(v)} ml/kg/km` },
+      series: [line('Running economy', re, 0, { step: 'end' })] }), true) : empty(charts.re);
+
     // race predictions (pace) + actual rolling bests
     const dist = { race_5k: 5000, race_10k: 10000, race_half: 21097.5, race_marathon: 42195 };
     const names = { race_5k: '5 km', race_10k: '10 km', race_half: 'Half', race_marathon: 'Marathon' };
@@ -82,7 +92,7 @@ export function createGarminCard(mk) {
     const hill = [pick('hill_score'), pick('hill_strength'), pick('hill_endurance')];
     hill[0].length ? charts.hill.setOption(base({ legend: { top: 0, textStyle: { color: th.ink2, fontSize: 11 } },
       yAxis: { type: 'value', scale: true, ...baseAxis(th) },
-      series: [line('Overall', hill[0], 0), line('Strength', hill[1], 1), line('Endurance', hill[2], 2)] }), true) : empty(charts.hill);
+      series: [line('Overall', hill[0], 0, {}, 3), line('Strength', hill[1], 1, {}, 3), line('Endurance', hill[2], 2, {}, 3)] }), true) : empty(charts.hill);
 
     // lactate threshold pace (steps)
     const lt = pick('lt_speed', (v) => 1000 / v);

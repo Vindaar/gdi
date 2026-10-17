@@ -78,8 +78,9 @@ export async function dashboardPage(app) {
   const [devEl, devChart] = mk();
   const [decEl, decChart] = mk();
   const [hrrEl, hrrChart] = mk();
+  const [fixEl, fixChart] = mk();
   const garmin = createGarminCard(mk);
-  const timeCharts = [loadChart, fitChart, devChart, decChart, hrrChart, ...garmin.charts];   // x = dates (ms)
+  const timeCharts = [loadChart, fitChart, devChart, fixChart, decChart, hrrChart, ...garmin.charts];   // x = dates (ms)
   const tilesEl = h('div', { class: 'tiles', style: 'margin-bottom:16px' });
   const zoneTotalEl = h('div', {});
   const controls = h('div', { class: 'filters' });
@@ -274,6 +275,7 @@ export async function dashboardPage(app) {
     }, true);
     decCount.textContent = `${decPts.length} steady runs in range`;
     await drawHrr(fromIso, timeAxis, th);
+    await drawFixedPace(fromIso, timeAxis, th);
     garmin.draw(fromIso).then(() => { if (zoom) applyRange(zoom); }).catch((e) => console.error(e));
     fitTitle.textContent = `Pace at ${refHr} bpm (grade-adjusted, flat road, 30 min into the run)`;
 
@@ -401,6 +403,59 @@ export async function dashboardPage(app) {
   const hrrCount = h('span', { class: 'muted' });
   const hrrCtl = h('span', { style: 'display:flex;gap:10px;align-items:center' });
   let hrrRows = null;
+  // ── heart rate at a fixed pace ──
+  // Per run: median HR of its flat 1 km segments whose grade-adjusted pace is
+  // within ±15 s/km of a reference pace, from 2 km into the run on (HR still
+  // lags during the warm-up). Outdoor runs only, duplicates left out.
+  const FIXED_BANDS = [[360, '6:00 /km'], [330, '5:30 /km'], [300, '5:00 /km']];
+  let segRows = null;
+  async function drawFixedPace(fromIso, timeAxis, th) {
+    segRows ??= objects(await api('segments?family=running'));
+    const actOf = new Map(acts.map((a) => [a.id, a]));
+    const first = new Map();
+    for (const r of segRows) if (!first.has(r.activity_id) || r.start_dist < first.get(r.activity_id)) first.set(r.activity_id, r.start_dist);
+    const byBand = FIXED_BANDS.map(() => new Map());   // activity → [hr]
+    for (const r of segRows) {
+      const a = actOf.get(r.activity_id);
+      if (!a || a.type_key === 'treadmill_running' || (a.dq_flags || '').includes('duplicate_of')) continue;
+      if (r.start_local.slice(0, 10) < fromIso || r.start_dist - first.get(r.activity_id) < 2000) continue;
+      if (r.avg_hr == null || r.avg_gap == null || r.grade == null || Math.abs(r.grade) > 1.5) continue;
+      const pace = 1000 / r.avg_gap;
+      FIXED_BANDS.forEach(([p], k) => {
+        if (Math.abs(pace - p) <= 15) {
+          const m = byBand[k];
+          if (!m.has(r.activity_id)) m.set(r.activity_id, []);
+          m.get(r.activity_id).push(r.avg_hr);
+        }
+      });
+    }
+    const ser = [];
+    let nRuns = 0;
+    FIXED_BANDS.forEach(([, label], k) => {
+      const pts = [...byBand[k].entries()].map(([id, hrs]) => {
+        const a = actOf.get(id);
+        return [Date.parse(a.start_local), median(hrs), a.name, id, hrs.length];
+      }).sort((p, q) => p[0] - q[0]);
+      nRuns += pts.length;
+      const roll = pts.map((p, i) => [p[0], median(pts.slice(Math.max(0, i - 9), i + 1).map((q) => q[1]))]);
+      const color = series(k, FIXED_BANDS.length);
+      ser.push({ name: label, type: 'scatter', symbolSize: (d) => 3 + Math.min(6, d[4]), data: pts, itemStyle: { color, opacity: 0.35 } });
+      ser.push({ name: label, type: 'line', symbol: 'none', data: roll, lineStyle: { width: 2.5, color }, itemStyle: { color }, tooltip: { show: false } });
+    });
+    fixChart.setOption({
+      animation: false, grid: { left: 56, right: 16, top: 30, bottom: 36 }, dataZoom: [{ type: 'inside' }],
+      legend: { top: 0, textStyle: { color: th.ink2 }, data: FIXED_BANDS.map((b) => b[1]) },
+      tooltip: { ...baseTooltip(th), trigger: 'item', formatter: (p) =>
+        `<b>${p.data[2]}</b><br>${fmtDay(p.data[0])} · ${p.seriesName}<br>${Math.round(p.data[1])} bpm (median of ${p.data[4]} km)` },
+      xAxis: timeAxis,
+      yAxis: { type: 'value', scale: true, ...baseAxis(th), axisLabel: { ...baseAxis(th).axisLabel, formatter: (v) => `${v}` }, name: 'bpm', nameTextStyle: { color: th.muted } },
+      series: ser,
+    }, true);
+    fixCount.textContent = `${nRuns} run × pace points in range`;
+  }
+  fixChart.on('click', (p) => { if (p.seriesType === 'scatter') location.hash = `#/activity/${p.data[3]}`; });
+  const fixCount = h('span', { class: 'muted', style: 'font-size:12px' });
+
   async function drawHrr(fromIso, timeAxis, th) {
     const s = state.get();
     hrrRows ??= objects(await api('hr-recovery'));
@@ -467,6 +522,11 @@ export async function dashboardPage(app) {
         h('div', {}, fitTitle, h('div', { class: 'muted', style: 'font-size:12px' }, 'From each run\'s expected-pace model (HR, drift, terrain). Lower = fitter. Click a dot to open the run.'), fitEl),
         h('div', {}, h('h3', {}, 'Each run vs expected (s/km, − = faster)'),
           h('div', { class: 'muted', style: 'font-size:12px' }, 'Grey band: typical run-to-run scatter. Orange: clearly outside it.'), devEl))),
+    h('div', { class: 'card', style: 'margin-top:16px' },
+      h('div', { class: 'filters', style: 'margin-bottom:4px;align-items:baseline' },
+        h('h2', { style: 'margin:0' }, 'Heart rate at a fixed pace'), fixCount),
+      h('div', { class: 'muted', style: 'font-size:12px' }, 'Per run: median HR of flat 1 km segments (|grade| ≤ 1.5 %) within ±15 s/km of each grade-adjusted pace, from 2 km into the run. Lines: median of the last 10 runs. Lower = fitter at that pace; summer heat raises it. Outdoor runs only. Click a dot to open the run.'),
+      fixEl),
     h('div', { class: 'card', style: 'margin-top:16px' },
       h('div', { class: 'filters', style: 'margin-bottom:4px;align-items:baseline' },
         h('h2', { style: 'margin:0' }, 'Aerobic endurance: decoupling'), decMinSel, decCount),
