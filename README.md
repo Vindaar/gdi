@@ -201,7 +201,8 @@ Everything gdi does, page by page.
   - distance, moving and elapsed time, average pace or speed;
   - grade-adjusted pace (Garmin's, or estimated for older runs);
   - average and max HR, ascent and descent, ascent per km;
-  - cadence, average power and normalised power, stride length;
+  - cadence, average power and normalised power, stride length, step speed
+    loss;
   - aerobic and anaerobic training effect, training load;
   - aerobic decoupling (with whether the run was steady enough to interpret
     it);
@@ -214,7 +215,8 @@ Everything gdi does, page by page.
   and time on the x axis:
   - pace, speed, grade-adjusted pace, heart rate, elevation;
   - run or bike cadence, power, stride length;
-  - ground contact time, vertical oscillation, vertical ratio, GCT balance;
+  - ground contact time, vertical oscillation, vertical ratio, GCT balance,
+    step speed loss (cm/s and % of speed, recorded with an HRM 600);
   - respiration rate, stamina, performance condition;
   - temperature, vertical speed, Body Battery.
 
@@ -323,7 +325,7 @@ Everything gdi does, page by page.
 
 - Every shoe or bike with Garmin's usage total against its target distance.
 - Per pair: medians of expected-pace delta, decoupling, HR, grade-adjusted
-  pace, cadence, stride, ascent per km and trail share.
+  pace, cadence, stride, step speed loss, ascent per km and trail share.
 - A gear × month heatmap of when you used what.
 
 ### Analysis (explorer)
@@ -334,7 +336,7 @@ Everything gdi does, page by page.
   - pace, grade-adjusted pace, HR, efficiency;
   - grade, ascent and descent;
   - cadence, stride, ground contact time, vertical oscillation and ratio, GCT
-    balance, power;
+    balance, step speed loss, power;
   - respiration, stamina, performance condition;
   - temperature (weather and watch sensor), humidity, dew point, wind;
   - training load and effect, RPE and feel;
@@ -438,7 +440,7 @@ Everything gdi does, page by page.
 - **Grade-adjusted pace estimated for runs without it**, using Garmin's own
   grade → effort curve (measured from runs that have both). It matches
   Garmin's activity average within about 2.4 s/km.
-- Per-kilometre segments with about 18 averaged channels, HR and speed histograms,
+- Per-kilometre segments with about 20 averaged channels, HR and speed histograms,
   and mean-maximal curves.
 - **Weather backfill** from Open-Meteo for activities without Garmin weather.
 - Pauses are respected: averages use moving time; best efforts use wall-clock

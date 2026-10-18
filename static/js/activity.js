@@ -27,6 +27,9 @@ const STREAMS = {
   vo:     { label: 'Vertical oscillation', unit: 'cm', src: 'directVerticalOscillation', smooth: 5 },
   vr:     { label: 'Vertical ratio', unit: '%', src: 'directVerticalRatio', smooth: 5 },
   gcb:    { label: 'GCT balance (left)', unit: '%', src: 'directGroundContactBalanceLeft', smooth: 5 },
+  // step speed loss (HRM 600): speed lost at each foot strike; Garmin stores m/s
+  ssl:    { label: 'Step speed loss', unit: 'cm/s', src: 'directStepSpeedLoss', smooth: 5, f: (v) => v * 100 },
+  sslp:   { label: 'Step speed loss (% of speed)', unit: '%', src: 'directStepSpeedLossPercent', smooth: 5 },
   resp:   { label: 'Respiration', unit: 'brpm', src: 'directRespirationRate' },
   stamina:{ label: 'Stamina', unit: '%', src: 'directAvailableStamina' },
   perf:   { label: 'Performance condition', unit: '', src: 'directPerformanceCondition' },
@@ -86,6 +89,7 @@ export async function activityPage(app, id) {
     a.avg_cadence ? tile('Cadence', fmtNum(a.avg_cadence), fam === 'cycling' ? 'rpm' : 'spm') : null,
     a.avg_power ? tile('Power avg / NP', `${fmtNum(a.avg_power)} / ${fmtNum(a.norm_power)}`, 'W') : null,
     a.avg_stride ? tile('Stride', fmtNum(a.avg_stride), 'cm') : null,
+    a.step_speed_loss != null ? tile('Step speed loss', fmtNum(a.step_speed_loss, 1), a.step_speed_loss_abs != null ? `% · ${fmtNum(a.step_speed_loss_abs, 1)} cm/s` : '%') : null,
     a.aerobic_te != null ? tile('Training effect', `${fmtNum(a.aerobic_te, 1)} / ${fmtNum(a.anaerobic_te, 1)}`) : null,
     a.training_load != null ? tile('Load', fmtNum(a.training_load)) : null,
     a.decoupling != null ? h('div', { class: 'tile', title: 'Efficiency (grade-adjusted speed ÷ HR) of the 2nd half vs the 1st half, after a 10 min warm-up. Below ~5 % on steady runs = good aerobic endurance; negative = 2nd half more efficient.' },
@@ -233,6 +237,7 @@ export async function activityPage(app, id) {
     const hrAvg = wmean(S('directHeartRate')), hrMax = maxOf(S('directHeartRate'));
     const cadArr = S('directDoubleCadence').length ? S('directDoubleCadence') : S('directBikeCadence');
     const pw = wmean(S('directPower'));
+    const ssl = wmean(S('directStepSpeedLoss')), sslp = wmean(S('directStepSpeedLossPercent'));
     const speed = dist != null && moving > 0 ? dist / moving : null;
     const where = xMode === 'distance' ? `km ${(+min).toFixed(2)}–${(+max).toFixed(2)}` : `${fmtDur(min)}–${fmtDur(max)}`;
     selEl.hidden = false;
@@ -248,6 +253,7 @@ export async function activityPage(app, id) {
         hrAvg ? tile('HR avg / max', `${fmtNum(hrAvg)} / ${fmtNum(hrMax)}`, 'bpm') : null,
         el.length ? tile('Ascent / descent', `${fmtNum(up)} / ${fmtNum(down)}`, 'm') : null,
         dist > 50 && el.length && el[i1] != null && el[i0] != null ? tile('Net grade', fmtNum((el[i1] - el[i0]) / dist * 100, 1), '%') : null,
+        sslp ? tile('Step speed loss', fmtNum(sslp, 1), ssl ? `% · ${fmtNum(ssl * 100, 1)} cm/s` : '%') : null,
         wmean(cadArr) ? tile('Cadence', fmtNum(wmean(cadArr)), fam === 'cycling' ? 'rpm' : 'spm') : null,
         pw ? tile('Power', fmtNum(pw), 'W') : null));
   }

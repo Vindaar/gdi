@@ -9,7 +9,7 @@ import std / [os, json, math, strutils, strformat, times, tables, algorithm, set
 import gdi_db, gdi_models, gdi_metrics, gdi_notes, gdi_weather, gdi_circuits
 
 const
-  ImporterVersion* = "16"
+  ImporterVersion* = "17"
     ## Bump whenever derived data changes; forces a full re-import.
   BestEffortDistances* = [400.0, 1000.0, 1609.344, 3000.0, 5000.0, 10000.0,
                           15000.0, 20000.0, 21097.5, 30000.0, 40000.0, 42195.0,
@@ -304,11 +304,13 @@ type Segment* = object
   avgSpeed*, avgGap*, avgHr*, avgCadence*, avgPower*, ascent*, descent*, grade*: float
   maxHr*, stamina*: float
   avgStride*, avgGct*, avgVo*, avgVr*, avgGcb*, avgResp*, avgTemp*, perfCond*: float
+  avgSsl*, avgSslPct*: float     ## step speed loss: cm/s, % of speed
 
 const SegChannels = ["directGradeAdjustedSpeed", "directHeartRate", "directDoubleCadence",
   "directPower", "directStrideLength", "directGroundContactTime",
   "directVerticalOscillation", "directVerticalRatio", "directGroundContactBalanceLeft",
-  "directRespirationRate", "directAirTemperature", "directPerformanceCondition"]
+  "directRespirationRate", "directAirTemperature", "directPerformanceCondition",
+  "directStepSpeedLoss", "directStepSpeedLossPercent"]
 
 proc segments*(st: Streams, wts: seq[float], segLen: float): seq[Segment] =
   ## Consecutive `segLen` metre chunks (last partial chunk dropped). Averages
@@ -350,6 +352,7 @@ proc segments*(st: Streams, wts: seq[float], segLen: float): seq[Segment] =
       cur.avgCadence = avg(2); cur.avgPower = avg(3)
       cur.avgStride = avg(4); cur.avgGct = avg(5); cur.avgVo = avg(6); cur.avgVr = avg(7)
       cur.avgGcb = avg(8); cur.avgResp = avg(9); cur.avgTemp = avg(10); cur.perfCond = avg(11)
+      cur.avgSsl = avg(12) * 100; cur.avgSslPct = avg(13)
       cur.grade = (if el.len == n and not startEl.isNaN and not el[i+1].isNaN:
                      (el[i+1] - startEl) / cur.length * 100 else: NaN)
       if moving > 0: result.add cur
@@ -834,6 +837,7 @@ proc importActivity*(db: DbConn, j: JsonNode) =
     ("impact_load", jf s.num("impactLoad")),
     ("recovery_hr", jf s.num("recoveryHeartRate")),
     ("step_speed_loss", jf s.num("stepSpeedLossPercent")),
+    ("step_speed_loss_abs", jf(s.num("stepSpeedLoss") * 100)),   # m/s → cm/s
     ("intensity_min", jf(block:
       let m = s.num("moderateIntensityMinutes")
       let v = s.num("vigorousIntensityMinutes")
@@ -938,7 +942,8 @@ proc importActivity*(db: DbConn, j: JsonNode) =
       ("max_hr", jf sg.maxHr), ("avg_stride", jf sg.avgStride), ("avg_gct", jf sg.avgGct),
       ("avg_vo", jf sg.avgVo), ("avg_vr", jf sg.avgVr), ("avg_gcb", jf sg.avgGcb),
       ("avg_resp", jf sg.avgResp), ("avg_temp", jf sg.avgTemp),
-      ("stamina", jf sg.stamina), ("perf_cond", jf sg.perfCond)])
+      ("stamina", jf sg.stamina), ("perf_cond", jf sg.perfCond),
+      ("avg_ssl", jf sg.avgSsl), ("avg_ssl_pct", jf sg.avgSslPct)])
 
   # mean-maximal speed (from cleaned distance), GAP speed and power by duration
   block:

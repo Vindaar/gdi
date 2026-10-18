@@ -37,6 +37,7 @@ export async function gearPage(app) {
       delta: median(runs.map((u) => u.delta)), nDelta: runs.filter((u) => u.delta != null).length,
       hr: median(runs.map((u) => u.avg_hr)), gap: median(runs.map((u) => u.avg_gap_speed)),
       cad: median(runs.map((u) => u.avg_cadence)), stride: median(runs.map((u) => u.avg_stride)),
+      ssl: median(runs.map((u) => u.step_speed_loss)), nSsl: runs.filter((u) => u.step_speed_loss != null).length,
       apk: median(runs.map((u) => u.ascent_per_km)), trail: runKm ? trailKm / runKm : null,
       dec: median(steady.map((u) => u.decoupling)), nDec: steady.length,
     };
@@ -70,6 +71,8 @@ export async function gearPage(app) {
       { key: 'gap', label: 'GAP', fmt: (v) => (v ? fmtPace(v) : '–') },
       { key: 'cad', label: 'Cad', fmt: (v) => fmtNum(v) },
       { key: 'stride', label: 'Stride cm', fmt: (v) => fmtNum(v) },
+      { key: 'ssl', label: 'Step loss', fmt: (v) => (v == null ? '–' : `${fmtNum(v, 1)} %`),
+        title: (r) => (r.nSsl ? `step speed loss, % of speed: median of ${r.nSsl} runs (needs an HRM 600; road runs only)` : null) },
       { key: 'apk', label: 'm/km', fmt: (v) => fmtNum(v, 1) },
       { key: 'trail', label: 'Trail', fmt: (v) => (v == null ? '–' : `${fmtNum(100 * v)} %`) },
     ], { sortKey: 'last', sortDesc: true, id: 'gear' }));

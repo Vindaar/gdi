@@ -94,7 +94,7 @@ const ActivityListCols = """id, name, type_key, parent_type, location, start_loc
   elapsed_duration, min_hr, max_cadence, max_power, avg_stride, steps, min_elev, max_elev,
   w_dew_point, w_wind_gust, avg_gct, avg_vo, avg_vr, avg_gcb, avg_resp, max_resp,
   stamina_begin, stamina_end, stamina_min, bb_delta, impact_load, recovery_hr,
-  step_speed_loss, intensity_min, perf_cond_first, perf_cond_last"""
+  step_speed_loss, step_speed_loss_abs, intensity_min, perf_cond_first, perf_cond_last"""
 
 proc familyFilter(family: string, alias = "a"): (string, seq[string]) =
   if family.len == 0 or family == "all": ("1=1", @[])
@@ -321,7 +321,7 @@ proc apiSegments(db: DbConn, family: string): JsonNode =
   db.queryTable(&"""SELECT s.activity_id, s.idx, s.start_dist, s.start_t, s.length, s.time, s.avg_speed,
       s.avg_gap, s.avg_hr, s.avg_cadence, s.avg_power, s.ascent, s.descent, s.grade,
       s.max_hr, s.avg_stride, s.avg_gct, s.avg_vo, s.avg_vr, s.avg_gcb, s.avg_resp,
-      s.avg_temp, s.stamina, s.perf_cond,
+      s.avg_temp, s.stamina, s.perf_cond, s.avg_ssl, s.avg_ssl_pct,
       a.start_local, a.type_key, a.name, a.distance AS total_distance,
       a.ascent_per_km, a.w_temp, a.w_humidity, a.w_wind_speed
     FROM segments s JOIN activities a ON a.id = s.activity_id
@@ -461,7 +461,7 @@ proc apiGear(db: DbConn): JsonNode =
   %*{"gear": gear,
      "uses": db.queryTable("""SELECT g.uuid, g.name, a.id, a.start_local, a.parent_type, a.type_key,
         a.distance, a.moving_duration, a.elev_gain, a.ascent_per_km, a.avg_hr, a.avg_gap_speed,
-        a.avg_moving_speed, a.avg_cadence, a.avg_stride, m.delta, a.decoupling, a.decoupling_steady
+        a.avg_moving_speed, a.avg_cadence, a.avg_stride, a.step_speed_loss, m.delta, a.decoupling, a.decoupling_steady
       FROM activity_gear g JOIN activities a ON a.id = g.activity_id
       LEFT JOIN run_model m ON m.activity_id = a.id
       WHERE a.dq_flags IS NULL OR a.dq_flags NOT LIKE '%duplicate_of%'

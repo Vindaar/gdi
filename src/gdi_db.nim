@@ -85,7 +85,8 @@ CREATE TABLE IF NOT EXISTS activities (
   bb_delta         REAL,              -- Body Battery change
   impact_load      REAL,
   recovery_hr      REAL,              -- Garmin's recovery heart rate
-  step_speed_loss  REAL,              -- %
+  step_speed_loss  REAL,              -- % of speed
+  step_speed_loss_abs REAL,           -- cm/s
   intensity_min    REAL,              -- moderate + 2 × vigorous minutes
   perf_cond_first  REAL,              -- performance condition: first / last value
   perf_cond_last   REAL,
@@ -176,6 +177,8 @@ CREATE TABLE IF NOT EXISTS segments (     -- consecutive 1 km chunks
   avg_temp    REAL,                   -- device temperature sensor, °C
   stamina     REAL,                   -- available stamina at the segment end, %
   perf_cond   REAL,                   -- mean performance condition
+  avg_ssl     REAL,                   -- step speed loss, cm/s
+  avg_ssl_pct REAL,                   -- step speed loss, % of speed
   PRIMARY KEY (activity_id, idx)
 );
 CREATE TABLE IF NOT EXISTS mmp (          -- mean-maximal values by duration
@@ -351,13 +354,13 @@ proc openDb*(path: string): DbConn =
                      ("bb_delta", "REAL"), ("impact_load", "REAL"), ("recovery_hr", "REAL"),
                      ("step_speed_loss", "REAL"), ("intensity_min", "REAL"),
                      ("perf_cond_first", "REAL"), ("perf_cond_last", "REAL"),
-                     ("w_source", "TEXT")]:
+                     ("w_source", "TEXT"), ("step_speed_loss_abs", "REAL")]:
     if col notin cols:
       result.exec(sql("ALTER TABLE activities ADD COLUMN " & col & " " & typ))
   # segments are derived (filled by the importer): recreate on layout change
   var scols: seq[string]
   for r in result.rows(sql"PRAGMA table_info(segments)"): scols.add r[1]
-  if "perf_cond" notin scols:
+  if "avg_ssl" notin scols:
     result.exec(sql"DROP TABLE IF EXISTS segments")
     for stmt in Schema.split(';'):
       if "TABLE IF NOT EXISTS segments" in stmt: result.exec(sql(stmt))
