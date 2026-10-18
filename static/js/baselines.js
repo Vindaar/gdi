@@ -85,7 +85,7 @@ export function normalCard(rows, base, i) {
     h('div', { class: 'sub', style: 'margin-bottom:8px' }, bad.length >= 2
       ? `Several signals are on the unfavourable side of your normal: ${bad.join(', ')}. Often seen with illness, heavy training, alcohol, travel or poor sleep — not a diagnosis.`
       : bad.length === 1 ? `One signal is outside your normal range (${bad[0]}).` : 'Everything is within or on the favourable side of your normal range.'),
-    h('div', { style: 'display:grid;grid-template-columns:max-content max-content max-content 1fr;gap:4px 16px;font-size:13px;font-variant-numeric:tabular-nums' }, items.flat()),
+    h('div', { class: 'normal-table' }, items.flat()),
     h('div', { class: 'muted', style: 'font-size:12px;margin-top:8px' },
       `"Usual" = 10th–90th percentile of your previous ${WINDOW} days (needs ≥ ${MIN_POINTS} days of data).`));
 }

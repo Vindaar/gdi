@@ -155,7 +155,29 @@ main { padding: 20px; max-width: 1500px; margin: 0 auto; }
 .grid { display: grid; gap: 16px; }
 .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-@media (max-width: 900px) { .cols-2, .cols-3 { grid-template-columns: 1fr; } main { padding: 12px 16px; } }
+@media (max-width: 900px) {
+  .cols-2, .cols-3 { grid-template-columns: 1fr; }
+  main { padding: 12px 16px; }
+  /* side-by-side layouts set inline (map | charts, zones | totals, …) stack too */
+  .grid[style*="grid-template-columns"] { grid-template-columns: minmax(0, 1fr) !important; }
+  .card[style*="position:sticky"] { position: static !important; }
+}
+
+/* phones: the page links move into a menu behind a button */
+.nav-toggle { display: none; }
+@media (max-width: 760px) {
+  .topbar { gap: 12px; padding: 0 12px; }
+  .status { display: none; }
+  .nav-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+  .topbar nav {
+    display: none; position: absolute; top: 48px; right: 0; left: 0;
+    flex-direction: column; gap: 2px; padding: 8px 12px 12px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+  }
+  .topbar.nav-open nav { display: flex; }
+  .topbar nav a { padding: 10px 12px; font-size: 15px; }
+}
 
 /* filter row */
 .filters { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: end; margin-bottom: 16px; }
@@ -307,3 +329,18 @@ td .tag { font-size: 11px; padding: 0 6px; margin-right: 2px; }
 .circuit-arrow { background: none; border: none; }
 .circuit-arrow span { display: block; width: 16px; height: 16px; line-height: 16px; text-align: center; font-size: 13px;
   text-shadow: 0 0 2px var(--surface), 0 0 2px var(--surface); }
+
+/* Health "compared with your normal": 4 columns; on phones the verdict wraps under its row */
+.normal-table { display: grid; grid-template-columns: max-content max-content max-content 1fr; gap: 4px 16px;
+  font-size: 13px; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .normal-table { grid-template-columns: minmax(0, 1fr) max-content max-content; gap: 2px 10px; }
+  .normal-table > :nth-child(4n) { grid-column: 1 / -1; margin-bottom: 6px; }
+}
+/* phones: segmented controls wrap instead of widening the page */
+@media (max-width: 600px) {
+  .seg { display: inline-flex; flex-wrap: wrap; max-width: 100%; }
+  .kv { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); }
+  .kv dd, .kv dt { overflow-wrap: anywhere; }
+  pre.json { max-width: calc(100vw - 32px); }
+}

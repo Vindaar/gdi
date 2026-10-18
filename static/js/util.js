@@ -279,6 +279,17 @@ export function echart(el) {
         }
       }
     }
+    // narrow screens: a legend wraps onto a second line, so give the plot room below it
+    if (opt && opt.legend && opt.legend.show !== false && el.clientWidth > 0 && el.clientWidth < 640 && opt.legend.type !== 'scroll') {
+      const legendItems = Array.isArray(opt.legend.data) ? opt.legend.data.length
+        : (Array.isArray(opt.series) ? opt.series : [opt.series]).filter((x) => x && x.name).length;
+      const lines = Math.ceil(legendItems / Math.max(1, Math.floor(el.clientWidth / 150)));
+      if (lines > 1) {
+        for (const g of Array.isArray(opt.grid) ? opt.grid : opt.grid ? [opt.grid] : []) {
+          if (typeof g.top === 'number') g.top += 22 * (lines - 1);
+        }
+      }
+    }
     if (opt && opt.dataZoom) {
       const dzs = Array.isArray(opt.dataZoom) ? opt.dataZoom : [opt.dataZoom];
       for (const dz of dzs) if (dz.type === 'inside') dz.zoomOnMouseWheel = false;

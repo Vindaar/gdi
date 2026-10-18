@@ -18,7 +18,7 @@
 <body>
 <header class="topbar">
   <a class="brand" href="#/">Training Log</a>
-  <nav>
+  <nav id="main-nav">
     <a href="#/activities" data-nav="activities">Activities</a>
     <a href="#/dashboard" data-nav="dashboard">Performance</a>
     <a href="#/efforts" data-nav="efforts">Best efforts</a>
@@ -30,6 +30,8 @@
     <a href="#/settings" data-nav="settings">Settings</a>
   </nav>
   <span class="status" id="status"></span>
+  <button class="nav-toggle" id="nav-toggle" type="button" aria-expanded="false" aria-controls="main-nav">
+    <span id="nav-current">Menu</span> <span aria-hidden="true">☰</span></button>
 </header>
 <main id="app"></main>
 <div id="tooltip" class="tooltip" hidden></div>

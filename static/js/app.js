@@ -38,6 +38,8 @@ async function route() {
     const m = hash.match(re);
     if (!m) continue;
     document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === nav));
+    document.getElementById('nav-current').textContent =
+      document.querySelector(`[data-nav="${nav}"]`)?.textContent || 'Menu';
     if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
     app.replaceChildren(h('div', { class: 'empty' }, 'Loading…'));
     try {
@@ -59,6 +61,17 @@ async function status() {
       `${s.activities} activities · ${s.withStreams} with streams · ${s.healthDays} health days`;
   } catch {}
 }
+
+// phone menu: the button shows the current page and toggles the link list
+const topbar = document.querySelector('.topbar');
+const navToggle = document.getElementById('nav-toggle');
+function setNavOpen(open) {
+  topbar.classList.toggle('nav-open', open);
+  navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+navToggle.addEventListener('click', () => setNavOpen(!topbar.classList.contains('nav-open')));
+document.addEventListener('click', (e) => { if (!topbar.contains(e.target)) setNavOpen(false); });
+window.addEventListener('hashchange', () => setNavOpen(false));
 
 window.addEventListener('hashchange', route);
 api('settings').then(applyZonePalette).catch(() => applyZonePalette({})).finally(route);
