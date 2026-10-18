@@ -26,13 +26,38 @@ aerobic decoupling, heart-rate recovery, heart rate at a fixed pace).
   duplicate uploads and HR cadence lock are detected and flagged rather than
   silently turned into "records".
 
-<!-- Screenshots: add a few images here (activity page, Performance, Analysis,
-     a circuit page). Mind that maps show where you run. -->
+## Screenshots
+
+<table>
+<tr>
+<td width="50%"><a href="docs/screenshots/01-activity.png"><img src="docs/screenshots/01-activity.png" alt="Activity page"></a><br><b>Activity page:</b> tiles, "faster than expected" against your own recent form, time in zones.</td>
+<td width="50%"><a href="docs/screenshots/10-activity-charts.png"><img src="docs/screenshots/10-activity-charts.png" alt="Activity map and charts"></a><br><b>Map and synchronised charts:</b> drag over a chart to get the stats of that stretch.</td>
+</tr>
+<tr>
+<td><a href="docs/screenshots/04-analysis.png"><img src="docs/screenshots/04-analysis.png" alt="Analysis explorer"></a><br><b>Analysis:</b> heart rate vs grade-adjusted pace for every flat kilometre since 2022, warm-up skipped, coloured by year.</td>
+<td><a href="docs/screenshots/03-fixed-pace-hr.png"><img src="docs/screenshots/03-fixed-pace-hr.png" alt="Fitness charts"></a><br><b>Fitness trends:</b> model pace at a reference HR, each run vs expected, and heart rate at a fixed pace.</td>
+</tr>
+<tr>
+<td><a href="docs/screenshots/06-circuit.png"><img src="docs/screenshots/06-circuit.png" alt="Circuit page"></a><br><b>Circuits:</b> a park loop found inside 54 runs, cut into 104 comparable laps.</td>
+<td><a href="docs/screenshots/02-performance.png"><img src="docs/screenshots/02-performance.png" alt="Performance dashboard"></a><br><b>Performance:</b> volume and time in zone at any resolution, zoom-synchronised.</td>
+</tr>
+<tr>
+<td><a href="docs/screenshots/07-health.png"><img src="docs/screenshots/07-health.png" alt="Health page"></a><br><b>Health:</b> each day against your own 30-day normal, HRV band, readiness.</td>
+<td><a href="docs/screenshots/05-best-efforts.png"><img src="docs/screenshots/05-best-efforts.png" alt="Best efforts"></a><br><b>Best efforts</b> for any distance, with personal-best progression.</td>
+</tr>
+<tr>
+<td><a href="docs/screenshots/08-routes.png"><img src="docs/screenshots/08-routes.png" alt="Routes and circuits"></a><br><b>Routes and circuits</b>, detected automatically.</td>
+<td><a href="docs/screenshots/09-analysis-monokai.png"><img src="docs/screenshots/09-analysis-monokai.png" alt="Monokai theme"></a><br><b>Themes:</b> here Monokai, with a histogram of average HR per run by year.</td>
+</tr>
+</table>
+
+Activity maps are blurred in these screenshots; the app shows normal OpenStreetMap tiles.
 
 ---
 
 ## Contents
 
+- [Screenshots](#screenshots)
 - [Quick start](#quick-start)
 - [Getting your data](#getting-your-data)
 - [Command-line reference](#command-line-reference)
