@@ -3,7 +3,7 @@
 version       = "0.1.0"
 author        = "Vindaar"
 description   = "Local analytics web app for your Garmin Connect data"
-license       = "TBD"
+license       = "MIT"
 srcDir        = "src"
 bin           = @["gdi"]
 

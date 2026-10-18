@@ -534,4 +534,4 @@ identifiers. Diary text is never exported.
 - Not affiliated with or endorsed by Garmin. Garmin, Garmin Connect, Body
   Battery and related names are trademarks of Garmin Ltd.
 
-**Licence:** *to be decided.*
+**Licence:** MIT, see [LICENSE](LICENSE).
