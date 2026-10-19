@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.png" width="128" alt="gdi logo"></p>
+
 # gdi: a local analytics app for your Garmin data
 
 **gdi** (*Garmin data interface*) turns the raw data Garmin Connect has about
@@ -22,6 +24,8 @@ aerobic decoupling, heart-rate recovery, heart rate at a fixed pace).
   [uPlot](https://github.com/leeoniya/uPlot) and
   [Leaflet](https://leafletjs.com). There is no build step and no
   `node_modules`.
+- **Installable on your phone.** It is a web app: "Install" or "Add to home
+  screen" in the browser, no app store. Nothing is cached on the device.
 - **Honest about data quality.** GPS glitches, sparse old phone recordings,
   duplicate uploads and HR cadence lock are detected and flagged rather than
   silently turned into "records".
