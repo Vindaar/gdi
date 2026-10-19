@@ -514,6 +514,8 @@ proc mimeFor(path: string): string =
   of ".json": "application/json"
   of ".svg": "image/svg+xml"
   of ".png": "image/png"
+  of ".webmanifest": "application/manifest+json"
+  of ".ico": "image/x-icon"
   else: "application/octet-stream"
 
 proc send(req: Request, code: HttpCode, body, ctype: string,

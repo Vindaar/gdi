@@ -74,6 +74,11 @@ document.addEventListener('click', (e) => { if (!topbar.contains(e.target)) setN
 window.addEventListener('hashchange', () => setNavOpen(false));
 
 window.addEventListener('hashchange', route);
+
+// service worker: makes the app installable (see sw.js; it caches nothing)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js', { scope: './' }).catch((e) => console.warn('service worker:', e));
+}
 api('settings').then(applyZonePalette).catch(() => applyZonePalette({})).finally(route);
 status();
 setInterval(status, 60000);
