@@ -10,7 +10,17 @@ import {
 import { activityCircuitsCard, similarRunsCard } from './circuits.js';
 import { runModelCard } from './runmodel.js';
 
-const ui = remember('activity', { xAxis: 'distance', extra: [] });
+const ui = remember('activity', { xAxis: 'distance', extra: [], refLines: ['mean'] });
+
+// Reference lines on the stream charts (toggle on the page, remembered per browser).
+const REF_LINES = [['mean', 'Mean'], ['median', 'Median'], ['iqr', 'P25–P75'], ['p1090', 'P10–P90']];
+
+/** moving-time-weighted quantile of [value, weight] pairs sorted by value */
+function wq(sorted, total, q) {
+  let acc = 0;
+  for (const [v, w] of sorted) { acc += w; if (acc >= q * total) return v; }
+  return sorted.length ? sorted[sorted.length - 1][0] : null;
+}
 
 // Stream definitions: key → how to plot it.
 const STREAMS = {
@@ -143,6 +153,14 @@ export async function activityPage(app, id) {
     chartsEl.replaceChildren();
     const xs = xData();
     const width = chartsEl.clientWidth || 900;
+    // seconds of moving time each sample stands for (stops don't count)
+    const mvS = st.sumMovingDuration || [];
+    const moveW = t.map((_, j) => {
+      if (j >= t.length - 1) return 0;
+      if (mvS[j] != null && mvS[j + 1] != null) return Math.max(0, mvS[j + 1] - mvS[j]);
+      const dt = t[j + 1] - t[j];
+      return dt > 0 && dt <= 10 ? dt : 0;
+    });
     const syncKey = 'act-' + id;
     let syncingScale = false;
     for (const [i, k] of chosenKeys().entries()) {
@@ -159,10 +177,83 @@ export async function activityPage(app, id) {
         range = [Math.max(120, lo - 15), Math.min(1200, hi + 30)];
       }
       const color = series(i % 8);
+      // raw (unsmoothed) values for the reference statistics; pace is averaged
+      // as speed (time-weighted mean speed = distance / time), then converted
+      const raw = st[s.src].map((v) => (v == null ? null : s.f ? s.f(v) : v));
+      const fmtV = (v) => (v == null ? '–' : isPace ? fmtDur(v) : (+v).toFixed(s.unit === 'cm' || s.unit === '%' || s.unit === 'cm/s' ? 1 : 0));
+      let statCache = null;
+      const statsFor = (min, max) => {
+        const key = `${min}|${max}`;
+        if (statCache && statCache.key === key) return statCache.v;
+        const pairs = [];
+        let tot = 0, sum = 0;
+        for (let j = 0; j < xs.length - 1; j++) {
+          if (xs[j] < min || xs[j] > max) continue;
+          const v = raw[j], w = moveW[j];
+          if (v == null || !(w > 0) || (isPace && !(v > 0.5))) continue;
+          pairs.push([v, w]); tot += w; sum += v * w;
+        }
+        let v = null;
+        if (tot > 0) {
+          pairs.sort((a, b) => a[0] - b[0]);
+          const q = (x) => wq(pairs, tot, x);
+          const toY = (x) => (isPace ? 1000 / x : x);
+          // pace: high speed = low pace, so the quantiles swap ends
+          const qq = (x) => toY(q(isPace ? 1 - x : x));
+          v = { mean: toY(sum / tot), median: qq(0.5), p25: qq(0.25), p75: qq(0.75), p10: qq(0.1), p90: qq(0.9) };
+        }
+        statCache = { key, v };
+        return v;
+      };
+      const baseTitle = `${k === 'gap' ? gapLabel : s.label}${s.unit ? ' (' + s.unit + ')' : ''}`;
+      const drawRefs = (u) => {
+        const on = new Set(ui.get().refLines || []);
+        const titleEl = u.root.querySelector('.u-title');
+        const sv = on.size ? statsFor(u.scales.x.min, u.scales.x.max) : null;
+        const parts = [];
+        if (sv) {
+          if (on.has('mean')) parts.push(`mean ${fmtV(sv.mean)}`);
+          if (on.has('median')) parts.push(`median ${fmtV(sv.median)}`);
+          if (on.has('iqr')) parts.push(`P25–P75 ${fmtV(sv.p25)}–${fmtV(sv.p75)}`);
+          if (on.has('p1090')) parts.push(`P10–P90 ${fmtV(sv.p10)}–${fmtV(sv.p90)}`);
+        }
+        if (titleEl) titleEl.textContent = parts.length ? `${baseTitle} · ${parts.join(' · ')}` : baseTitle;
+        if (!sv) return;
+        const { ctx } = u;
+        const { left, top, width: w, height: hgt } = u.bbox;
+        const pr = devicePixelRatio || 1;
+        const y = (v) => u.valToPos(v, 'y', true);
+        ctx.save();
+        ctx.beginPath(); ctx.rect(left, top, w, hgt); ctx.clip();
+        const band = (a, b, alpha) => {
+          const y0 = y(a), y1 = y(b);
+          ctx.fillStyle = color; ctx.globalAlpha = alpha;
+          ctx.fillRect(left, Math.min(y0, y1), w, Math.abs(y1 - y0));
+          ctx.globalAlpha = 1;
+        };
+        if (on.has('p1090')) band(sv.p10, sv.p90, 0.08);
+        if (on.has('iqr')) band(sv.p25, sv.p75, 0.12);
+        const line = (v, dash, label, align) => {
+          const yy = Math.round(y(v)) + 0.5;
+          ctx.strokeStyle = css('--ink'); ctx.globalAlpha = 0.75; ctx.lineWidth = 1.25 * pr;
+          ctx.setLineDash(dash.map((d) => d * pr));
+          ctx.beginPath(); ctx.moveTo(left, yy); ctx.lineTo(left + w, yy); ctx.stroke();
+          ctx.setLineDash([]); ctx.globalAlpha = 1;
+          ctx.font = `${11 * pr}px system-ui, sans-serif`;
+          ctx.textAlign = align; ctx.textBaseline = 'bottom';
+          const tx = align === 'right' ? left + w - 4 * pr : left + 4 * pr;
+          // halo so the label stays readable over the curve
+          ctx.lineWidth = 3 * pr; ctx.strokeStyle = css('--surface'); ctx.strokeText(label, tx, yy - 2 * pr);
+          ctx.fillStyle = css('--ink-2'); ctx.fillText(label, tx, yy - 2 * pr);
+        };
+        if (on.has('median')) line(sv.median, [2, 3], `median ${fmtV(sv.median)}`, 'left');
+        if (on.has('mean')) line(sv.mean, [6, 4], `mean ${fmtV(sv.mean)}`, 'right');
+        ctx.restore();
+      };
       const el = h('div', { class: 'card', style: 'padding:8px 8px 0;margin-bottom:8px' });
       chartsEl.append(el);
       const opts = {
-        title: `${k === 'gap' ? gapLabel : s.label}${s.unit ? ' (' + s.unit + ')' : ''}`,
+        title: baseTitle,
         width: el.clientWidth - 16 || width, height: 170,
         cursor: { sync: { key: syncKey, setSeries: false }, drag: { x: true, y: false } },
         legend: { show: true, live: true },
@@ -180,6 +271,7 @@ export async function activityPage(app, id) {
         ],
         hooks: {
           setCursor: [(u) => { if (u.cursor.idx != null) moveMarker(u.cursor.idx); }],
+          draw: [drawRefs],
           setScale: [(u, key) => {
             if (key !== 'x' || syncingScale) return;
             syncingScale = true;
@@ -350,6 +442,17 @@ export async function activityPage(app, id) {
   // ── layout ──
   const extraPicker = h('div', { class: 'filters' },
     hasDist ? h('label', {}, 'X axis', segmented([['distance', 'Distance'], ['time', 'Time']], xMode, (v) => { xMode = v; ui.set({ xAxis: v }); drawCharts(); })) : null,
+    h('label', { title: 'Moving-time weighted, over the visible range (zoom in to get the stats of a stretch)' }, 'Reference lines',
+      h('span', { style: 'display:flex;flex-wrap:wrap;gap:4px' }, REF_LINES.map(([key, label]) => {
+        const on = (ui.get().refLines || []).includes(key);
+        return h('button', { class: on ? 'primary' : '', onclick: (e) => {
+          const set = new Set(ui.get().refLines || []);
+          set.has(key) ? set.delete(key) : set.add(key);
+          ui.set({ refLines: [...set] });
+          e.target.classList.toggle('primary');
+          plots.forEach((p) => p.redraw(false, false));
+        } }, label);
+      }))),
     h('label', {}, 'More charts', h('span', { style: 'display:flex;flex-wrap:wrap;gap:4px' },
       available.filter(([k]) => !defaults.includes(k)).map(([k, s]) => {
         const on = ui.get().extra.includes(k);

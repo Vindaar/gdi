@@ -221,6 +221,9 @@ Everything gdi does, page by page.
   - temperature, vertical speed, Body Battery.
 
   Every chart the recording supports can be shown, with sensible smoothing.
+- **Reference lines:** a mean line with its value on every chart, plus an
+  optional median and P25–P75 / P10–P90 bands. They are moving-time weighted
+  and follow the zoom, so zooming into a stretch shows its own statistics.
 - **Range selection:** drag over any chart to get the stats of that stretch
   (distance, moving and elapsed time, pace, grade-adjusted pace, average and
   max HR, ascent and descent, net grade, cadence, power).
