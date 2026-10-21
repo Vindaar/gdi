@@ -9,7 +9,7 @@ import std / [os, json, math, strutils, strformat, times, tables, algorithm, set
 import gdi_db, gdi_models, gdi_metrics, gdi_notes, gdi_weather, gdi_circuits
 
 const
-  ImporterVersion* = "17"
+  ImporterVersion* = "18"
     ## Bump whenever derived data changes; forces a full re-import.
   BestEffortDistances* = [400.0, 1000.0, 1609.344, 3000.0, 5000.0, 10000.0,
                           15000.0, 20000.0, 21097.5, 30000.0, 40000.0, 42195.0,
@@ -715,12 +715,24 @@ proc importActivity*(db: DbConn, j: JsonNode) =
 
   let dist = s.num("distance")
   let gainM = s.num("elevationGain")
+  # Moving time / speed: some summaries (e.g. eleven 2022 runs) lack them;
+  # fall back to the activity's own moving-time stream, then distance ÷ that.
+  var movingDur = s.num("movingDuration")
+  if movingDur.isNaN or movingDur <= 0:
+    let mvs = st.get("sumMovingDuration")
+    for i in countdown(mvs.high, 0):
+      if not mvs[i].isNaN:
+        if mvs[i] > 0: movingDur = mvs[i]
+        break
+  var movingSpeed = s.num("averageMovingSpeed")
+  if (movingSpeed.isNaN or movingSpeed <= 0) and dist > 0 and movingDur > 0:
+    movingSpeed = dist / movingDur
   # Average GAP on the same baseline as the summary pace: Garmin's own value
   # when present, else summary moving speed × (sample GAP / sample speed).
   var avgGap = s.num("avgGradeAdjustedSpeed")
   if avgGap.isNaN and "directGradeAdjustedSpeed" in st:
     let ratio = weightedMean(st.get("directGradeAdjustedSpeed"), wts) / weightedMean(st.get("directSpeed"), wts)
-    let base = s.num("averageMovingSpeed")
+    let base = movingSpeed
     avgGap = (if not base.isNaN and base > 0 and not ratio.isNaN: base * ratio
               else: weightedMean(st.get("directGradeAdjustedSpeed"), wts))
   # data quality: glitch-cleaned distance plus flags for what looks wrong
@@ -786,7 +798,7 @@ proc importActivity*(db: DbConn, j: JsonNode) =
     ("start_lon", jf s.num("startLongitude")),
     ("distance", jf dist),
     ("duration", jf s.num("duration")),
-    ("moving_duration", jf s.num("movingDuration")),
+    ("moving_duration", jf movingDur),
     ("elapsed_duration", jf s.num("elapsedDuration")),
     ("elev_gain", jf gainM),
     ("elev_loss", jf s.num("elevationLoss")),
@@ -794,7 +806,7 @@ proc importActivity*(db: DbConn, j: JsonNode) =
     ("max_elev", jf s.num("maxElevation")),
     ("ascent_per_km", jf(if dist > 100 and not gainM.isNaN: gainM / (dist / 1000) else: NaN)),
     ("avg_speed", jf s.num("averageSpeed")),
-    ("avg_moving_speed", jf s.num("averageMovingSpeed")),
+    ("avg_moving_speed", jf movingSpeed),
     ("max_speed", jf s.num("maxSpeed")),
     ("avg_gap_speed", jf avgGap),
     ("gap_source", js gapSource),
